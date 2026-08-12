@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>ارزیابی کیفیت عملکرد کارشناسان CRM</title>
+<link rel="stylesheet" href="./styles.css">
+<script src="./vendor/chart.umd.min.js"></script>
+</head>
+<body>
+<div id="app">
+
+  <div id="sidebar">
+    <div class="brand">ارزیابی کیفیت CRM
+      <small>برید سامانه نوین</small>
+    </div>
+
+    <div class="nav-section-title">داده و تنظیمات</div>
+    <div class="nav-item active" data-page="upload">📂 بارگذاری فایل‌ها</div>
+    <div class="nav-item" data-page="periods">🗓 بازه‌های زمانی و اجرا</div>
+    <div class="nav-item" data-page="expert-groups">👥 گروه‌بندی کارشناسان</div>
+    <div class="nav-item" data-page="criteria">⚖️ معیارها و وزن‌ها</div>
+    <div class="nav-item" data-page="ai-settings">🤖 تنظیمات AI</div>
+
+    <div class="nav-section-title">گزارش‌ها</div>
+    <div class="nav-item" data-page="dashboard">📊 داشبورد مدیریتی</div>
+    <div class="nav-item" data-page="comparison">🔁 مقایسه دو دوره</div>
+    <div class="nav-item" data-page="ranking">🏆 رتبه‌بندی کارشناسان</div>
+    <div class="nav-item" data-page="cases">🗂 تحلیل Caseها</div>
+    <div class="nav-item" data-page="suspicious">⚠️ Caseهای نیازمند بررسی</div>
+    <div class="nav-item" data-page="data-quality">🩺 سلامت داده CRM</div>
+    <div class="nav-item" data-page="mgmt-report">📝 جمع‌بندی مدیریتی</div>
+    <div class="nav-item" data-page="export">⬇️ Export</div>
+
+    <div class="spacer"></div>
+    <div class="status-pill" id="dataset-status">فایلی بارگذاری نشده است.</div>
+    <div id="app-version" style="text-align:center;font-size:10.5px;opacity:.55;padding:8px 0 2px 0">نگارش: —</div>
+  </div>
+
+  <!-- ==================================================== Case Detail Modal
+       Modal مشترک در سطح کل اپ؛ از هر صفحه‌ای (تحلیل Caseها، Caseهای نیازمند
+       بررسی، جزئیات کارشناس) قابل فراخوانی است تا جزئیات همیشه قابل‌مشاهده
+       باشد، نه فقط وقتی صفحه «تحلیل Caseها» فعال است. -->
+  <div id="case-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(20,26,36,.55);z-index:1500;
+       align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto" onclick="if(event.target===this) closeCaseModal()">
+    <div class="card" style="max-width:820px;width:100%;position:relative">
+      <button onclick="closeCaseModal()" style="position:absolute;left:14px;top:14px;border:none;background:#eef0f4;
+              width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:14px">×</button>
+      <h3 id="case-detail-title"></h3>
+      <div id="case-detail-meta" style="font-size:12.5px;color:var(--muted);margin-bottom:14px"></div>
+      <div class="tabs">
+        <div class="tab-btn active" data-tab="timeline" onclick="switchCaseTab('timeline')">Timeline</div>
+        <div class="tab-btn" data-tab="breakdown" onclick="switchCaseTab('breakdown')">جزئیات امتیاز</div>
+      </div>
+      <div id="case-tab-timeline"><div class="timeline" id="case-timeline"></div></div>
+      <div id="case-tab-breakdown" style="display:none">
+        <div id="case-score-summary" class="grid cols-4" style="margin-bottom:14px"></div>
+        <table><thead><tr><th>معیار</th><th>دسته</th><th>نوع</th><th>امتیاز</th><th>شواهد</th></tr></thead><tbody id="case-breakdown-body"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <div id="boot-loading" style="display:flex;position:fixed;inset:0;background:#f3f5f9;color:#1f2733;z-index:1999;
+       align-items:center;justify-content:center;text-align:center;direction:rtl;font-family:'Vazirmatn',Tahoma,sans-serif;">
+    <div>
+      <div style="font-size:13px;color:#6b7488">در حال اتصال به موتور نمایش...</div>
+    </div>
+  </div>
+
+  <div id="boot-error" style="display:none;position:fixed;inset:0;background:#1f2733;color:#fff;z-index:2000;
+       align-items:center;justify-content:center;text-align:center;padding:40px;direction:rtl;font-family:'Vazirmatn',Tahoma,sans-serif;overflow-y:auto;">
+    <div style="max-width:600px;line-height:2.1;font-size:14px">
+      <div style="font-size:34px;margin-bottom:14px">⚠️</div>
+      <div style="font-weight:700;font-size:17px;margin-bottom:10px">اتصال به موتور نمایش برقرار نشد</div>
+      <div>
+        به‌نظر می‌رسد موتور نمایش برنامه (Microsoft Edge WebView2) روی این سیستم نصب است ولی
+        نسخه‌اش قدیمی یا با این برنامه ناسازگار است، بنابراین بخش‌های تعاملی
+        (انتخاب فایل، معیارها، تحلیل) کار نمی‌کنند.
+      </div>
+      <div style="margin-top:16px;text-align:right;background:rgba(255,255,255,.07);padding:14px 16px;border-radius:10px">
+        <b>مرحله ۱ —</b> این پنجره را کامل ببندید.<br>
+        <b>مرحله ۲ —</b> با یکی از دو روش زیر WebView2 Runtime را به آخرین نسخه به‌روزرسانی کنید:
+        <ul style="margin:8px 0 4px 0;padding-right:20px">
+          <li>اگر اینترنت دارید: روی لینک زیر کلیک کنید (نصب‌کننده کوچک آنلاین)</li>
+          <li>اگر اینترنت شرکتی محدود است: عبارت «WebView2 Runtime Standalone Installer» را در گوگل جستجو و از سایت microsoft.com دانلود/نصب کنید (نسخه آفلاین کامل)</li>
+        </ul>
+        <b>مرحله ۳ —</b> کامپیوتر را Restart کنید، سپس <b>run.cmd</b> را دوباره اجرا کنید.
+      </div>
+      <div style="margin-top:14px">
+        <a href="https://developer.microsoft.com/en-us/microsoft-edge/webview2/" target="_blank"
+           style="color:#8ecdf7;font-weight:700;text-decoration:underline">
+          باز کردن صفحه دانلود WebView2 Runtime
+        </a>
+      </div>
+      <div style="margin-top:8px;padding:10px;background:rgba(255,255,255,.1);border-radius:8px;font-size:12px;word-break:break-all;user-select:all">
+        https://developer.microsoft.com/en-us/microsoft-edge/webview2/
+      </div>
+      <div style="margin-top:16px;display:flex;gap:10px;justify-content:center">
+        <button onclick="location.reload()" style="padding:9px 18px;border-radius:8px;border:none;background:#2f80ed;color:#fff;font-family:inherit;font-size:13px;cursor:pointer">تلاش مجدد (بدون بستن برنامه)</button>
+        <button onclick="navigator.clipboard.writeText('https://developer.microsoft.com/en-us/microsoft-edge/webview2/')" style="padding:9px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.3);background:transparent;color:#fff;font-family:inherit;font-size:13px;cursor:pointer">کپی لینک</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="main">
+
+    <!-- ============================================================ Upload -->
+    <section class="page active" id="page-upload">
+      <h1 class="page-title">بارگذاری فایل‌های Notes و Tasks</h1>
+      <p class="page-sub">فایل‌های اکسپورت‌شده از Dynamics CRM را انتخاب کنید. برنامه ستون‌ها را به‌صورت خودکار شناسایی می‌کند.</p>
+
+      <div class="grid cols-2">
+        <div class="card">
+          <h3>فایل Notes</h3>
+          <div class="upload-box">
+            <div>📄 فایل حاوی Note های Case</div>
+            <button class="btn primary" style="margin-top:12px" onclick="pickFile('notes')">انتخاب فایل...</button>
+            <div class="file-name" id="notes-file-name">فایلی انتخاب نشده</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>فایل Tasks</h3>
+          <div class="upload-box">
+            <div>📄 فایل حاوی Task های کارشناسان</div>
+            <button class="btn primary" style="margin-top:12px" onclick="pickFile('tasks')">انتخاب فایل...</button>
+            <div class="file-name" id="tasks-file-name">فایلی انتخاب نشده</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:18px">
+        <button class="btn primary" id="btn-upload" onclick="doUpload()" disabled>پردازش و اعتبارسنجی فایل‌ها</button>
+        <button class="btn" onclick="clearDataset()">پاک‌کردن داده بارگذاری‌شده</button>
+      </div>
+
+      <div id="upload-result" style="margin-top:20px"></div>
+    </section>
+
+    <!-- =========================================================== Periods -->
+    <section class="page" id="page-periods">
+      <h1 class="page-title">انتخاب بازه‌های زمانی و اجرای تحلیل</h1>
+      <p class="page-sub">دو دوره مستقل برای مقایسه انتخاب کنید (تاریخ‌ها شمسی است). فیلتر بر اساس تاریخ ثبت Note/Task انجام می‌شود.</p>
+
+      <div class="grid cols-2">
+        <div class="card">
+          <h3>دوره اول</h3>
+          <div class="row">
+            <div class="field"><label class="field-label">از تاریخ</label><div id="p1-start-picker"></div></div>
+            <div class="field"><label class="field-label">تا تاریخ</label><div id="p1-end-picker"></div></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>دوره دوم</h3>
+          <div class="row">
+            <div class="field"><label class="field-label">از تاریخ</label><div id="p2-start-picker"></div></div>
+            <div class="field"><label class="field-label">تا تاریخ</label><div id="p2-end-picker"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h3>محدوده تحلیل (اختیاری)</h3>
+        <div class="field" style="max-width:340px">
+          <label class="field-label">اجرا فقط برای یک گروه کارشناسان خاص</label>
+          <select id="run-expert-group"><option value="">همه کارشناسان</option></select>
+        </div>
+        <div style="font-size:11.5px;color:var(--muted)">گروه‌ها را از منوی «گروه‌بندی کارشناسان» بسازید.</div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div id="date-bounds-hint" style="font-size:12.5px;color:var(--muted);margin-bottom:12px"></div>
+        <button class="btn primary" id="btn-run" onclick="runAnalysis()">اجرای تحلیل</button>
+        <div id="progress-area" style="margin-top:14px;display:none">
+          <div id="progress-label" style="font-size:12.5px;color:var(--muted)"></div>
+          <div class="progress-bar"><div id="progress-fill" style="width:0%"></div></div>
+        </div>
+        <div id="run-result" style="margin-top:12px"></div>
+      </div>
+    </section>
+
+    <!-- =================================================== Expert Groups -->
+    <section class="page" id="page-expert-groups">
+      <h1 class="page-title">گروه‌بندی کارشناسان</h1>
+      <p class="page-sub">کارشناسان را در گروه‌های دلخواه دسته‌بندی کنید. برای هر گروه مشخص کنید کارشناسان Help Desk هستند (ارزیابی بر اساس Case) یا پشتیبانی فنی (ارزیابی بر اساس Task).</p>
+
+      <div class="card" style="margin-bottom:16px" id="default-groups-card">
+        <h3>گروه‌های پیش‌فرض</h3>
+        <p style="font-size:12.5px;color:var(--muted);margin-top:-6px">پیشنهاد دو گروه «Help Desk» و «پشتیبانی فنی» بر اساس نام‌های داده‌شده، با تطبیق تقریبی روی نام‌های واقعی کارشناسان در داده بارگذاری‌شده.</p>
+        <button class="btn primary" onclick="loadDefaultGroupSuggestions()">بررسی و ایجاد گروه‌های پیش‌فرض</button>
+        <div id="default-groups-suggestions" style="margin-top:14px"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <h3 id="group-form-title">ساخت گروه جدید</h3>
+        <div class="row">
+          <div class="field"><label class="field-label">نام گروه</label><input type="text" id="new-group-name" placeholder="مثلاً: تیم سطح یک"></div>
+          <div class="field">
+            <label class="field-label">واحد بررسی</label>
+            <select id="new-group-unit">
+              <option value="case">Case (مثل Help Desk)</option>
+              <option value="task">Task (مثل پشتیبانی فنی)</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label">جستجوی کارشناس</label>
+          <input type="text" id="expert-search-box" placeholder="بخشی از نام را تایپ کنید..." oninput="filterExpertChecklist()">
+        </div>
+        <div class="field">
+          <label class="field-label">انتخاب کارشناسان (از داده بارگذاری‌شده)</label>
+          <div id="expert-checklist" style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:10px">
+            <span style="color:var(--muted);font-size:12.5px">ابتدا فایل‌ها را بارگذاری کنید.</span>
+          </div>
+        </div>
+        <button class="btn primary" onclick="saveNewExpertGroup()">ذخیره گروه</button>
+        <button class="btn" id="cancel-edit-group-btn" style="display:none" onclick="cancelEditGroup()">انصراف از ویرایش</button>
+      </div>
+
+      <div class="card">
+        <h3>گروه‌های موجود</h3>
+        <div id="expert-groups-list" style="display:flex;flex-direction:column;gap:10px"></div>
+      </div>
+    </section>
+
+
+    <!-- ========================================================== Criteria -->
+    <section class="page" id="page-criteria">
+      <h1 class="page-title">معیارهای ارزیابی و وزن‌ها</h1>
+      <p class="page-sub">معیارها را فعال/غیرفعال و وزن آن‌ها را تنظیم کنید.</p>
+      <div class="warn-box">تغییرات این صفحه ذخیره می‌شوند ولی روی نتیجه فعلی روی صفحه اثر نمی‌گذارند؛ برای اعمال تغییرات باید از صفحه «بازه‌های زمانی و اجرا»، تحلیل را دوباره اجرا کنید.</div>
+
+      <div class="card" style="margin-bottom:16px">
+        <h3>نسبت Objective / AI در Final Score</h3>
+        <div class="row" style="max-width:420px">
+          <div class="field"><label class="field-label">سهم Rule-Based (Objective)</label><input type="number" id="ratio-objective" min="0" max="1" step="0.05"></div>
+          <div class="field"><label class="field-label">سهم AI</label><input type="number" id="ratio-ai" min="0" max="1" step="0.05"></div>
+          <div class="field"><button class="btn primary" onclick="saveRatio()">ذخیره</button></div>
+        </div>
+      </div>
+
+      <div id="criteria-list"></div>
+      <button class="btn" onclick="resetCriteria()">بازگشت به تنظیمات پیش‌فرض</button>
+
+      <div class="card" style="margin-top:24px;max-width:560px">
+        <h3>Export / Import تنظیمات</h3>
+        <p style="font-size:12.5px;color:var(--muted);margin-top:-6px">شامل معیارها، وزن‌ها، گروه‌های کارشناسان، و تنظیمات AI (به‌جز خود کلید API، به‌دلایل امنیتی).</p>
+        <button class="btn primary" onclick="exportSettings()">Export تنظیمات</button>
+        <div style="margin-top:14px">
+          <label class="field-label">Import تنظیمات از فایل</label>
+          <div class="row" style="align-items:center">
+            <select id="import-mode" style="max-width:220px">
+              <option value="merge">Merge (افزودن/به‌روزرسانی، بدون حذف)</option>
+              <option value="replace">Replace (جایگزینی کامل گروه‌ها)</option>
+            </select>
+            <button class="btn" onclick="importSettings()">انتخاب فایل و Import</button>
+          </div>
+        </div>
+        <div id="settings-io-result" style="margin-top:12px"></div>
+      </div>
+    </section>
+
+
+    <!-- ======================================================== AI Settings -->
+    <section class="page" id="page-ai-settings">
+      <h1 class="page-title">تنظیمات هوش مصنوعی</h1>
+      <p class="page-sub">AI کاملاً اختیاری است؛ در صورت غیرفعال بودن، تحلیل فقط بر اساس Rule Engine انجام می‌شود.</p>
+
+      <div class="card" style="max-width:640px">
+        <div class="field">
+          <label class="field-label">فعال بودن تحلیل AI</label>
+          <select id="ai-enabled"><option value="false">غیرفعال</option><option value="true">فعال</option></select>
+        </div>
+        <div class="field">
+          <label class="field-label">Provider</label>
+          <select id="ai-provider">
+            <option value="openai">OpenAI</option>
+            <option value="custom">سازگار با OpenAI (Custom Endpoint / Local)</option>
+            <option value="gemini">Google Gemini</option>
+          </select>
+        </div>
+        <div class="row">
+          <div class="field"><label class="field-label">Model</label><input type="text" id="ai-model" placeholder="gpt-4o-mini"></div>
+          <div class="field"><label class="field-label">Base URL (برای OpenAI/Custom)</label><input type="text" id="ai-base-url" placeholder="https://api.openai.com/v1"></div>
+        </div>
+        <div class="field">
+          <label class="field-label">API Key <span id="ai-key-masked" style="color:var(--muted)"></span></label>
+          <input type="password" id="ai-api-key" placeholder="برای تغییر کلید، مقدار جدید را وارد کنید">
+        </div>
+        <div class="row">
+          <div class="field"><label class="field-label">Temperature</label><input type="number" id="ai-temperature" min="0" max="1" step="0.1"></div>
+          <div class="field"><label class="field-label">Max Tokens</label><input type="number" id="ai-max-tokens" step="50"></div>
+          <div class="field"><label class="field-label">Batch Size</label><input type="number" id="ai-batch-size" step="1"></div>
+        </div>
+        <button class="btn primary" onclick="saveAiSettings()">ذخیره تنظیمات</button>
+        <button class="btn" onclick="testAi()">تست اتصال</button>
+        <button class="btn" onclick="deleteAiKey()">حذف کلید ذخیره‌شده</button>
+        <div id="ai-test-result" style="margin-top:12px"></div>
+      </div>
+    </section>
+
+    <!-- ========================================================= Dashboard -->
+    <section class="page" id="page-dashboard">
+      <h1 class="page-title">داشبورد مدیریتی</h1>
+      <p class="page-sub">نمای کلی از حجم داده، سلامت داده و روند کیفیت بین دو دوره.</p>
+      <div id="dashboard-empty" class="empty-state">هنوز تحلیلی اجرا نشده است. از منوی «بازه‌های زمانی و اجرا» شروع کنید.</div>
+      <div id="dashboard-content" style="display:none">
+        <div class="grid cols-4" id="dashboard-kpis"></div>
+        <div class="grid cols-2" style="margin-top:16px">
+          <div class="card"><h3>مقایسه دسته‌های کیفیت (دوره ۱ / دوره ۲)</h3><canvas id="chart-categories" height="220"></canvas></div>
+          <div class="card"><h3>روند امتیاز کلی</h3><canvas id="chart-overall" height="220"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================= Comparison -->
+    <section class="page" id="page-comparison">
+      <h1 class="page-title">مقایسه دو دوره</h1>
+      <div id="comparison-empty" class="empty-state">هنوز تحلیلی اجرا نشده است.</div>
+      <div id="comparison-content" style="display:none">
+        <div class="card" style="margin-bottom:16px" id="comparison-narrative"></div>
+        <div class="grid cols-2">
+          <div class="card">
+            <h3>بر اساس دسته‌بندی</h3>
+            <table><thead><tr><th>دسته</th><th>دوره اول</th><th>دوره دوم</th><th>تغییر</th></tr></thead><tbody id="comparison-cat-body"></tbody></table>
+          </div>
+          <div class="card">
+            <h3>بر اساس معیار</h3>
+            <table><thead><tr><th>معیار</th><th>دوره اول</th><th>دوره دوم</th><th>تغییر</th></tr></thead><tbody id="comparison-crit-body"></tbody></table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================== Ranking -->
+    <section class="page" id="page-ranking">
+      <h1 class="page-title">رتبه‌بندی کارشناسان</h1>
+      <div id="ranking-empty" class="empty-state">هنوز تحلیلی اجرا نشده است.</div>
+      <div id="ranking-content" style="display:none" class="card">
+        <table>
+          <thead><tr><th>کارشناس</th><th>دوره اول</th><th>دوره دوم</th><th>تغییر</th><th>وضعیت</th><th>تعداد Case (دوره ۲)</th></tr></thead>
+          <tbody id="ranking-body"></tbody>
+        </table>
+      </div>
+
+      <div id="expert-detail-panel" style="display:none;margin-top:18px" class="card">
+        <h3 id="expert-detail-title"></h3>
+        <div class="grid cols-2" id="expert-detail-stats"></div>
+        <div id="expert-feedback-box" style="display:none;margin-top:16px"></div>
+        <h3 style="margin-top:16px">Caseهای دوره دوم (ضعیف‌ترین ابتدا)</h3>
+        <table><thead><tr><th>شماره Case</th><th>عنوان</th><th>Final Score</th></tr></thead><tbody id="expert-cases-body"></tbody></table>
+      </div>
+    </section>
+
+    <!-- ============================================================ Cases -->
+    <section class="page" id="page-cases">
+      <h1 class="page-title">تحلیل Caseها</h1>
+      <div id="cases-empty" class="empty-state">هنوز تحلیلی اجرا نشده است.</div>
+      <div id="cases-content" style="display:none">
+        <div class="row" style="margin-bottom:12px;align-items:center">
+          <div class="field" style="max-width:160px">
+            <label class="field-label">دوره</label>
+            <select id="cases-period" onchange="loadCasesTable(0)"><option value="period2">دوره دوم</option><option value="period1">دوره اول</option></select>
+          </div>
+          <div class="field" style="max-width:220px">
+            <label class="field-label">کارشناس</label>
+            <select id="cases-expert-filter" onchange="loadCasesTable(0)"><option value="">همه کارشناسان</option></select>
+          </div>
+          <div class="field" style="max-width:220px">
+            <label class="field-label">Status Reason</label>
+            <select id="cases-status-filter" onchange="loadCasesTable(0)"><option value="">همه</option></select>
+          </div>
+          <div style="flex:1"></div>
+        </div>
+        <div class="card">
+          <table>
+            <thead id="cases-table-head"><tr><th>شماره Case</th><th>عنوان</th><th>کارشناس</th><th>Note</th><th>Task</th><th>Objective</th><th>AI</th><th>Final</th></tr></thead>
+            <tbody id="cases-table-body"></tbody>
+          </table>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">
+            <span id="cases-page-info" style="font-size:12px;color:var(--muted)"></span>
+            <div>
+              <button class="btn" onclick="casesPrev()">قبلی</button>
+              <button class="btn" onclick="casesNext()">بعدی</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================= Suspicious -->
+    <section class="page" id="page-suspicious">
+      <h1 class="page-title">Caseهای نیازمند بررسی</h1>
+      <p class="page-sub">Caseهای دارای الگوی غیرعادی، مستقل از دوره زمانی انتخاب‌شده.</p>
+      <div id="suspicious-empty" class="empty-state">هنوز تحلیلی اجرا نشده است.</div>
+      <div id="suspicious-content" style="display:none" class="card">
+        <table><thead><tr><th>شماره Case</th><th>عنوان</th><th>دلایل</th></tr></thead><tbody id="suspicious-body"></tbody></table>
+      </div>
+    </section>
+
+    <!-- ===================================================== Data Quality -->
+    <section class="page" id="page-data-quality">
+      <h1 class="page-title">سلامت داده CRM</h1>
+      <p class="page-sub">مستقل از عملکرد کارشناسان؛ کیفیت خام داده ثبت‌شده در CRM را می‌سنجد.</p>
+      <div id="dq-empty" class="empty-state">هنوز تحلیلی اجرا نشده است.</div>
+      <div id="dq-content" style="display:none">
+        <div class="card" style="margin-bottom:16px">
+          <div class="kpi"><div class="label">شاخص کلی سلامت داده</div><div class="value" id="dq-index">-</div></div>
+        </div>
+        <div class="card">
+          <table><thead><tr><th>بررسی</th><th>امتیاز سلامت</th><th>تعداد مورد مشکل‌دار</th><th>توضیح</th></tr></thead><tbody id="dq-body"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================== Mgmt Report -->
+    <section class="page" id="page-mgmt-report">
+      <h1 class="page-title">جمع‌بندی مدیریتی</h1>
+      <div id="mgmt-empty" class="empty-state">هنوز تحلیلی اجرا نشده است.</div>
+      <div id="mgmt-content" style="display:none">
+        <div class="card" style="margin-bottom:16px"><h3>وضعیت کلی</h3><p id="mgmt-status"></p></div>
+        <div class="grid cols-2">
+          <div class="card"><h3>مهم‌ترین نقاط قوت</h3><div class="chip-list" id="mgmt-strengths"></div></div>
+          <div class="card"><h3>مهم‌ترین نقاط ضعف</h3><div class="chip-list" id="mgmt-weaknesses"></div></div>
+          <div class="card"><h3>بیشترین بهبود</h3><ul id="mgmt-improved"></ul></div>
+          <div class="card"><h3>بیشترین افت</h3><ul id="mgmt-declined"></ul></div>
+        </div>
+        <div class="card" style="margin-top:16px"><h3>مهم‌ترین مشکلات ثبت اطلاعات</h3><div class="chip-list" id="mgmt-data-issues"></div></div>
+        <div class="card" style="margin-top:16px"><h3>پیشنهادهای بهبود</h3><ul id="mgmt-recs"></ul></div>
+      </div>
+    </section>
+
+    <!-- ========================================================== Export -->
+    <section class="page" id="page-export">
+      <h1 class="page-title">خروجی گزارش</h1>
+      <p class="page-sub">خروجی اکسل شامل تمام شیت‌های تحلیلی است. Export PDF در نسخه فعلی پیاده‌سازی نشده (به بخش README مراجعه کنید).</p>
+      <div class="card" style="max-width:520px">
+        <button class="btn primary" onclick="exportExcel()">Export گزارش کامل (Excel)</button>
+        <div style="margin-top:14px">
+          <label class="field-label">Export یک جدول به CSV</label>
+          <select id="csv-table-select">
+            <option value="cases">Case Analysis</option>
+            <option value="experts">Expert Analysis</option>
+            <option value="criteria">Criteria Scores</option>
+            <option value="comparison">Period Comparison</option>
+            <option value="data_quality">Data Quality</option>
+            <option value="ai_analysis">AI Analysis</option>
+            <option value="suspicious">Suspicious Cases</option>
+          </select>
+          <button class="btn" style="margin-top:10px" onclick="exportCsv()">Export CSV</button>
+        </div>
+        <div id="export-result" style="margin-top:14px"></div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="./app.js"></script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+# محیط مجازی و پکیج‌ها
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# تست
+.pytest_cache/
+.coverage
+htmlcov/
+
+# دیتابیس و تنظیمات محلی کاربر (نباید در مخزن مشترک باشند)
+*.db
+*.sqlite3
+
+# فایل‌های ورودی/خروجی نمونه که ممکن است حاوی داده واقعی مشتریان باشند
+/samples/
+/data-samples/
+*.xlsx
+!ui/vendor/**
+outputs/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# کلید و اسرار (هرگز نباید Commit شوند)
+*.env
+secrets.json
+api-key.bin

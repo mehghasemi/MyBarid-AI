@@ -1,0 +1,342 @@
+{
+  "objective_ai_ratio": {
+    "objective": 0.6,
+    "ai": 0.4
+  },
+  "categories": [
+    {
+      "id": "notes_quality",
+      "name_fa": "کیفیت ثبت Notes",
+      "criteria": [
+        {
+          "id": "notes_completeness",
+          "name_fa": "کامل بودن اطلاعات Note",
+          "description_fa": "Note شامل شرح مشکل، اقدام و نتیجه است.",
+          "weight": 15,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        },
+        {
+          "id": "notes_clarity",
+          "name_fa": "شفافیت شرح مشکل",
+          "description_fa": "طول و ساختار متن نشان‌دهنده شرح قابل‌فهم است.",
+          "weight": 10,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        },
+        {
+          "id": "notes_result_recorded",
+          "name_fa": "ثبت نتیجه اقدام",
+          "description_fa": "وجود عبارات نشان‌دهنده نتیجه/وضعیت نهایی در متن.",
+          "weight": 15,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        },
+        {
+          "id": "notes_no_duplication",
+          "name_fa": "عدم تکراری بودن اطلاعات",
+          "description_fa": "نبود Noteهای تکراری در همان Case.",
+          "weight": 10,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        },
+        {
+          "id": "notes_writing_quality",
+          "name_fa": "کیفیت نگارشی و ساختار متن",
+          "description_fa": "بررسی heuristics پایه نگارش (طول جمله‌بندی، وجود ساختار).",
+          "weight": 10,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        }
+      ]
+    },
+    {
+      "id": "task_quality",
+      "name_fa": "کیفیت Task",
+      "criteria": [
+        {
+          "id": "task_presence_when_needed",
+          "name_fa": "وجود Task در Caseهای نیازمند اقدام",
+          "description_fa": "اگر Case بیش از یک Note کارشناسی دارد، Task هم باید ثبت شده باشد.",
+          "weight": 15,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        },
+        {
+          "id": "task_case_relation",
+          "name_fa": "ارتباط Task با Case",
+          "description_fa": "میزان اطمینان اتصال Task به Case (بر اساس شماره Case یا تطبیق متنی).",
+          "weight": 10,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        },
+        {
+          "id": "task_description_quality",
+          "name_fa": "کیفیت Description در Task",
+          "description_fa": "وجود شرح کافی برای اقدام انجام‌شده.",
+          "weight": 15,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        },
+        {
+          "id": "task_result_recorded",
+          "name_fa": "مشخص بودن نتیجه اقدام",
+          "description_fa": "وجود عبارات نتیجه/پیگیری در متن Task.",
+          "weight": 10,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        }
+      ]
+    },
+    {
+      "id": "time_quality",
+      "name_fa": "کیفیت زمانی",
+      "criteria": [
+        {
+          "id": "first_response_time",
+          "name_fa": "فاصله ایجاد Case تا اولین اقدام",
+          "description_fa": "فاصله زمانی بین ایجاد Case و اولین Note/Task کارشناسی.",
+          "weight": 15,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        },
+        {
+          "id": "followup_delay",
+          "name_fa": "تأخیر در Follow-up",
+          "description_fa": "فاصله بین Next Follow Up برنامه‌ریزی‌شده و تاریخ واقعی اقدام بعدی.",
+          "weight": 10,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        },
+        {
+          "id": "due_date_compliance",
+          "name_fa": "رعایت Due Date",
+          "description_fa": "مقایسه Actual Start/تکمیل با Due Date.",
+          "weight": 10,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        },
+        {
+          "id": "unusual_time_gap",
+          "name_fa": "عدم وجود فاصله زمانی غیرمنطقی",
+          "description_fa": "نبود شکاف زمانی بیش از حد بین رویدادهای متوالی یک Case.",
+          "weight": 10,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        }
+      ]
+    },
+    {
+      "id": "expert_quality",
+      "name_fa": "کیفیت کارشناسی",
+      "criteria": [
+        {
+          "id": "problem_understanding",
+          "name_fa": "درک و تشخیص صحیح مسئله",
+          "description_fa": "ارزیابی معنایی اینکه آیا کارشناس مسئله را درست فهمیده است.",
+          "weight": 20,
+          "active": true,
+          "evaluation_type": "AI",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        },
+        {
+          "id": "solution_appropriateness",
+          "name_fa": "تناسب و منطقی بودن راهکار",
+          "description_fa": "تناسب اقدام انجام‌شده با مشکل مطرح‌شده.",
+          "weight": 20,
+          "active": true,
+          "evaluation_type": "AI",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        },
+        {
+          "id": "customer_interaction_quality",
+          "name_fa": "کیفیت تعامل با مشتری",
+          "description_fa": "حرفه‌ای بودن و شفافیت پاسخ به مشتری.",
+          "weight": 15,
+          "active": true,
+          "evaluation_type": "AI",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        },
+        {
+          "id": "conclusion_adequacy",
+          "name_fa": "کفایت نتیجه‌گیری",
+          "description_fa": "کامل و قابل‌دفاع بودن جمع‌بندی نهایی Case.",
+          "weight": 15,
+          "active": true,
+          "evaluation_type": "AI",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        }
+      ]
+    },
+    {
+      "id": "documentation_quality",
+      "name_fa": "کیفیت مستندسازی",
+      "criteria": [
+        {
+          "id": "timeline_reconstructable",
+          "name_fa": "امکان بازسازی Timeline Case",
+          "description_fa": "امکان دنبال‌کردن روند Case فقط از روی Noteها/Taskها.",
+          "weight": 15,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        },
+        {
+          "id": "final_status_clear",
+          "name_fa": "مشخص بودن وضعیت نهایی",
+          "description_fa": "روشن بودن نتیجه نهایی Case از متن آخرین رویداد.",
+          "weight": 15,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        },
+        {
+          "id": "ai_documentation_assessment",
+          "name_fa": "ارزیابی کلی مستندسازی (AI)",
+          "description_fa": "قضاوت معنایی AI درباره کفایت کلی مستندسازی Case برای استفاده به‌عنوان Knowledge Base.",
+          "weight": 20,
+          "active": true,
+          "evaluation_type": "AI",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
+        }
+      ]
+    },
+    {
+      "id": "task_standalone_quality",
+      "name_fa": "کیفیت Task (پشتیبانی فنی)",
+      "criteria": [
+        {
+          "id": "task_std_description_quality",
+          "name_fa": "کیفیت شرح Task",
+          "description_fa": "وجود شرح کافی برای اقدام انجام‌شده در همان Task.",
+          "weight": 20,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "task"
+        },
+        {
+          "id": "task_std_result_recorded",
+          "name_fa": "ثبت نتیجه اقدام",
+          "description_fa": "وجود عبارات نتیجه/رفع مشکل در متن Task.",
+          "weight": 20,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "task"
+        },
+        {
+          "id": "task_std_due_date_compliance",
+          "name_fa": "رعایت Due Date",
+          "description_fa": "مقایسه Actual Start با Due Date تعیین‌شده.",
+          "weight": 15,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "task"
+        },
+        {
+          "id": "task_std_followup_handled",
+          "name_fa": "مدیریت Follow-up",
+          "description_fa": "اگر Task نیاز به پیگیری داشته، تاریخ پیگیری بعدی ثبت شده باشد.",
+          "weight": 15,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "task"
+        }
+      ]
+    }
+  ],
+  "data_health_checks": [
+    {
+      "id": "notes_without_description",
+      "name_fa": "Note بدون Description"
+    },
+    {
+      "id": "tasks_without_description",
+      "name_fa": "Task بدون Description"
+    },
+    {
+      "id": "cases_without_note",
+      "name_fa": "Case بدون Note"
+    },
+    {
+      "id": "cases_without_task",
+      "name_fa": "Case بدون Task"
+    },
+    {
+      "id": "duplicate_notes",
+      "name_fa": "Note تکراری"
+    },
+    {
+      "id": "duplicate_tasks",
+      "name_fa": "Task تکراری"
+    },
+    {
+      "id": "unmatched_tasks",
+      "name_fa": "Task قابل‌اتصال به هیچ Case‌ای نیست"
+    },
+    {
+      "id": "unreasonable_timestamps",
+      "name_fa": "Timestamp غیرمنطقی"
+    }
+  ]
+}
