@@ -21,17 +21,28 @@ Export شده از Dynamics CRM (Notes و Tasks).
 ## ۲. نصب و اجرا
 
 ساده‌ترین روش: روی فایل **`run.cmd`** دابل‌کلیک کنید. این اسکریپت:
-1. یک محیط مجازی پایتون (`.venv`) می‌سازد.
+1. در صورت نیاز، درخواست دسترسی Administrator می‌دهد (به بخش «نکته
+   مهم» زیر مراجعه کنید) و یک پنجره UAC نشان می‌دهد — «Yes» را بزنید.
 2. پکیج‌های `requirements.txt` (فقط `openpyxl` و `pywebview`) را نصب می‌کند.
 3. برنامه را اجرا می‌کند.
 
-اجرای دستی (در Command Prompt):
+اجرای دستی (در Command Prompt، به‌عنوان Administrator):
 ```
-python -m venv .venv
-.venv\Scripts\activate
 pip install -r requirements.txt
 python main.py
 ```
+
+### نکته مهم: چرا Administrator لازم است؟
+
+روی برخی سیستم‌های ویندوزی، حتی کاربری که عضو گروه Administrator است،
+به‌طور پیش‌فرض با یک دسترسی محدودشده («Filtered Token») اجرا می‌شود مگر
+برنامه صریحاً درخواست Elevation کند. یک باگ شناخته‌شده در تعامل بین
+pywebview/WebView2 و ابزارهای Accessibility ویندوز (UI Automation) باعث
+می‌شود بدون این دسترسی، برنامه هنگام راه‌اندازی **Hang** کند (پنجره باز
+نمی‌شود یا کاملاً یخ می‌زند). `run.cmd` از این نگارش به بعد خودش
+به‌صورت خودکار درخواست Elevation می‌دهد؛ اگر با این حال باز هم مشکل
+داشتید، دستی روی `run.cmd` راست‌کلیک کرده و «Run as administrator» را
+بزنید.
 
 ## ۳. جریان کار در اپلیکیشن
 

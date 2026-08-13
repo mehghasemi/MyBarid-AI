@@ -72,18 +72,20 @@
       <div style="font-size:34px;margin-bottom:14px">⚠️</div>
       <div style="font-weight:700;font-size:17px;margin-bottom:10px">اتصال به موتور نمایش برقرار نشد</div>
       <div>
-        به‌نظر می‌رسد موتور نمایش برنامه (Microsoft Edge WebView2) روی این سیستم نصب است ولی
-        نسخه‌اش قدیمی یا با این برنامه ناسازگار است، بنابراین بخش‌های تعاملی
-        (انتخاب فایل، معیارها، تحلیل) کار نمی‌کنند.
+        این معمولاً یکی از دو علت دارد: نسخه قدیمی Microsoft Edge WebView2، یا اجرای
+        برنامه بدون دسترسی Administrator (حتی برای کاربرانی که عضو گروه Administrator
+        هستند، ویندوز به‌طور پیش‌فرض دسترسی محدود می‌دهد مگر صریحاً درخواست شود).
       </div>
       <div style="margin-top:16px;text-align:right;background:rgba(255,255,255,.07);padding:14px 16px;border-radius:10px">
-        <b>مرحله ۱ —</b> این پنجره را کامل ببندید.<br>
-        <b>مرحله ۲ —</b> با یکی از دو روش زیر WebView2 Runtime را به آخرین نسخه به‌روزرسانی کنید:
+        <b>راه‌حل سریع —</b> این پنجره را کامل ببندید، روی <b>run.cmd</b> راست‌کلیک کنید و
+        «Run as administrator» را بزنید (نگارش فعلی run.cmd این کار را خودش خودکار
+        درخواست می‌کند؛ اگر باز هم این پیام را دیدید، دستی امتحان کنید).<br><br>
+        <b>اگر مشکل ادامه داشت —</b> WebView2 Runtime را به آخرین نسخه به‌روزرسانی کنید:
         <ul style="margin:8px 0 4px 0;padding-right:20px">
           <li>اگر اینترنت دارید: روی لینک زیر کلیک کنید (نصب‌کننده کوچک آنلاین)</li>
           <li>اگر اینترنت شرکتی محدود است: عبارت «WebView2 Runtime Standalone Installer» را در گوگل جستجو و از سایت microsoft.com دانلود/نصب کنید (نسخه آفلاین کامل)</li>
         </ul>
-        <b>مرحله ۳ —</b> کامپیوتر را Restart کنید، سپس <b>run.cmd</b> را دوباره اجرا کنید.
+        سپس کامپیوتر را Restart کنید و <b>run.cmd</b> را دوباره اجرا کنید.
       </div>
       <div style="margin-top:14px">
         <a href="https://developer.microsoft.com/en-us/microsoft-edge/webview2/" target="_blank"
