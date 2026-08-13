@@ -11,6 +11,7 @@ const state = {
   casesPageSize: 25,
   charts: {},
   criteriaConfig: null,
+  currentExpert: null,
 };
 
 function api() { return window.pywebview.api; }
@@ -558,6 +559,8 @@ function strengthCard(s, isPositive) {
 async function showExpertDetail(expert) {
   const d = await api().get_expert_detail(expert);
   if (!d.ok) return;
+  state.currentExpert = expert;
+  document.getElementById('expert-export-result').innerHTML = '';
   document.getElementById('expert-detail-panel').style.display = 'block';
   document.getElementById('expert-detail-title').textContent = `کارشناس: ${expert}`;
 
@@ -954,6 +957,18 @@ async function exportCsv() {
   const res = await api().export_csv_table(table, path);
   document.getElementById('export-result').innerHTML = res.ok
     ? `<div class="ok-box">فایل ذخیره شد: ${res.path}</div>` : `<div class="err-box">${res.error}</div>`;
+}
+
+async function exportExpertReport() {
+  if (!state.currentExpert) return;
+  const box = document.getElementById('expert-export-result');
+  const safeName = state.currentExpert.replace(/[\\/:*?"<>|]/g, '_');
+  const path = await api().pick_save_path(`گزارش-عملکرد-${safeName}.xlsx`);
+  if (!path) return;
+  box.innerHTML = '<div class="warn-box">در حال ساخت گزارش...</div>';
+  const res = await api().export_expert_report_excel(state.currentExpert, path);
+  box.innerHTML = res.ok
+    ? `<div class="ok-box">گزارش ذخیره شد: ${res.path}</div>` : `<div class="err-box">${res.error}</div>`;
 }
 
 /* ------------------------------------------------------------------------

@@ -342,8 +342,12 @@
       </div>
 
       <div id="expert-detail-panel" style="display:none;margin-top:18px" class="card">
-        <h3 id="expert-detail-title"></h3>
-        <div class="grid cols-2" id="expert-detail-stats"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <h3 id="expert-detail-title" style="margin:0"></h3>
+          <button class="btn primary" onclick="exportExpertReport()">⬇️ Export گزارش این کارشناس</button>
+        </div>
+        <div id="expert-export-result" style="margin-top:8px"></div>
+        <div class="grid cols-2" id="expert-detail-stats" style="margin-top:10px"></div>
         <div id="expert-feedback-box" style="display:none;margin-top:16px"></div>
         <h3 style="margin-top:16px">Caseهای دوره دوم (ضعیف‌ترین ابتدا)</h3>
         <table><thead><tr><th>شماره Case</th><th>عنوان</th><th>Final Score</th></tr></thead><tbody id="expert-cases-body"></tbody></table>

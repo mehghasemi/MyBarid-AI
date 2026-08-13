@@ -142,6 +142,90 @@ def build_employee_feedback(s: ExpertStats, strength_threshold: float = 80.0,
     }
 
 
+def weakness_priority(avg_score: float) -> str:
+    if avg_score < 40:
+        return "بالا"
+    if avg_score < 55:
+        return "متوسط"
+    return "پایین"
+
+
+def team_average(all_stats: dict[str, ExpertStats]) -> float | None:
+    values = [s.avg_final for s in all_stats.values() if s.avg_final is not None]
+    return round(sum(values) / len(values), 1) if values else None
+
+
+def build_full_employee_report(
+    expert: str,
+    s_current: ExpertStats | None,
+    s_previous: ExpertStats | None,
+    all_stats_current: dict[str, ExpertStats],
+    period_label: str,
+    unit: str = "case",
+) -> dict:
+    """گزارش کامل و مستقل یک کارشناس: خلاصه عملکرد + کارنامه معیارها + نقاط
+    قوت/ضعف اولویت‌بندی‌شده + Feedback + Action Plan + جمع‌بندی مدیریتی.
+    همه بر اساس دوره «current» (معمولاً دوره دوم) محاسبه می‌شود؛ دوره
+    «previous» فقط برای محاسبه روند (Trend) استفاده می‌شود."""
+    if not s_current:
+        return {
+            "expert": expert, "has_data": False,
+            "message": "برای این کارشناس در دوره انتخاب‌شده داده‌ای برای تحلیل وجود ندارد.",
+        }
+
+    fb = build_employee_feedback(s_current)
+    for w in fb["weaknesses"]:
+        w["priority"] = weakness_priority(w["avg_score"])
+
+    change = None
+    if s_previous and s_previous.avg_final is not None and s_current.avg_final is not None:
+        change = round(s_current.avg_final - s_previous.avg_final, 1)
+
+    t_avg = team_average(all_stats_current)
+    vs_team = None
+    if t_avg is not None and s_current.avg_final is not None:
+        vs_team = round(s_current.avg_final - t_avg, 1)
+
+    scorecard = []
+    for name, samples in s_current.criterion_samples.items():
+        scores = [x["score"] for x in samples]
+        scorecard.append({
+            "criterion": name, "category": samples[0]["category"],
+            "avg_score": round(sum(scores) / len(scores), 1),
+            "count": len(samples),
+        })
+    scorecard.sort(key=lambda x: x["avg_score"])
+
+    top_strength = fb["strengths"][0]["criterion"] if fb["strengths"] else None
+    top_weakness = fb["weaknesses"][0]["criterion"] if fb["weaknesses"] else None
+
+    management_summary = {
+        "overall_status": status_label(change) if change is not None else "داده کافی برای مقایسه با دوره قبل نیست",
+        "top_strength": top_strength or "داده کافی برای شناسایی نقطه قوت مشخص نیست",
+        "top_weakness": top_weakness or "ضعف قابل‌توجهی شناسایی نشد",
+        "top_priority": fb["action_plan"][0]["focus"] if fb["action_plan"] else "—",
+        "next_focus": (
+            f"تمرکز دوره بعد: بهبود «{top_weakness}»" if top_weakness
+            else "روند فعلی حفظ شود"
+        ),
+    }
+
+    return {
+        "expert": expert, "has_data": True, "unit": unit, "period_label": period_label,
+        "summary": {
+            "case_count": s_current.case_count if unit == "case" else s_current.task_count,
+            "note_count": s_current.note_count, "task_count": s_current.task_count,
+            "avg_objective": s_current.avg_objective, "avg_ai": s_current.avg_ai,
+            "avg_final": s_current.avg_final, "change_vs_previous": change,
+            "team_average": t_avg, "vs_team_average": vs_team,
+        },
+        "scorecard": scorecard,
+        "strengths": fb["strengths"], "weaknesses": fb["weaknesses"],
+        "feedback_lines": fb["feedback_lines"], "action_plan": fb["action_plan"],
+        "management_summary": management_summary,
+    }
+
+
 def status_label(change: float | None) -> str:
     if change is None:
         return "داده کافی نیست"

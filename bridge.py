@@ -16,6 +16,7 @@ from database import db
 from pipeline import Dataset, run_full_analysis
 import pipeline as pipeline_mod
 from reports.csv_export import export_csv
+from reports.employee_report_export import export_expert_report_excel as export_expert_report_excel_file
 from reports.excel_export import export_excel
 
 USER_CONFIG_PATH = db.app_data_dir() / "criteria_config.json"
@@ -51,6 +52,7 @@ class Api:
         self.config: CriteriaConfig = self._load_config()
         self.ai_settings: AISettings = self._load_ai_settings()
         self.result: dict | None = None
+        self.last_periods: tuple | None = None
         self.status = {"running": False, "done": False, "stage": "", "current": 0, "total": 0, "error": None}
         self._lock = threading.Lock()
 
@@ -397,6 +399,7 @@ class Api:
             period2 = (_parse_period_bound(p2_start, end=False), _parse_period_bound(p2_end, end=True))
         except ValueError:
             return {"ok": False, "error": "فرمت تاریخ نامعتبر است."}
+        self.last_periods = (period1, period2)
 
         expert_filter = None
         unit = "case"
@@ -514,6 +517,40 @@ class Api:
             "ok": True, "period1": ser(s1), "period2": ser(s2), "cases": cases_p2[:200],
             "feedback": feedback,
         }
+
+    def _build_full_expert_report(self, expert: str) -> dict:
+        from analysis.experts import build_full_employee_report
+        r = self.result
+        s1 = r["experts_p1"].get(expert)
+        s2 = r["experts_p2"].get(expert)
+        s_current, s_previous = (s2, s1) if s2 else (s1, None)
+
+        period_label = "—"
+        if self.last_periods:
+            p1, p2 = self.last_periods
+            active = p2 if s2 else p1
+            period_label = f"{active[0].date().isoformat()} تا {active[1].date().isoformat()}"
+
+        return build_full_employee_report(
+            expert, s_current, s_previous, r["experts_p2"], period_label, unit=r.get("unit", "case"),
+        )
+
+    def get_expert_report(self, expert: str) -> dict:
+        if not self.result:
+            return {"ok": False, "error": "ابتدا تحلیل را اجرا کنید."}
+        report = self._build_full_expert_report(expert)
+        return {"ok": True, "report": report}
+
+    def export_expert_report_excel(self, expert: str, path: str) -> dict:
+        if not self.result:
+            return {"ok": False, "error": "ابتدا تحلیل را اجرا کنید."}
+        try:
+            report = self._build_full_expert_report(expert)
+            export_expert_report_excel_file(path, report)
+            return {"ok": True, "path": path}
+        except Exception as exc:  # noqa: BLE001
+            traceback.print_exc()
+            return {"ok": False, "error": f"خطا در ساخت گزارش: {exc}"}
 
     def get_case_detail(self, case_key: str, period: str = "period2") -> dict:
         if not self.result:
