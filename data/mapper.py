@@ -43,6 +43,7 @@ NOTES_FIELDS: list[FieldSpec] = [
     FieldSpec("assign_to", "واگذارشده به", ["Assign To (Regarding) (Case)", "Assign To"]),
     FieldSpec("incident_type", "نوع Incident", ["Incident Type (Regarding) (Case)", "Incident Type"]),
     FieldSpec("case_description", "شرح Case", ["Description (Regarding) (Case)"], exact_only=True),
+    FieldSpec("scenario", "سناریوی وقوع (Scenario)", ["Scenario (Regarding) (Case)", "Scenario"]),
 ]
 
 TASKS_FIELDS: list[FieldSpec] = [
