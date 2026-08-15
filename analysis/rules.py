@@ -262,27 +262,6 @@ def unusual_time_gap(case: CaseBundle) -> RuleResult:
 
 # --------------------------------------------------------- Documentation --
 
-# --------------------------------------------------------- Scenario -----
-
-def scenario_recorded(case: CaseBundle) -> RuleResult:
-    """کیفیت ثبت فیلد Scenario (سناریوی وقوع مشکل). این فیلد را کارشناس
-    هنگام ثبت/مدیریت Case وارد می‌کند و طبق تعریف Rule-Based زیر ارزیابی
-    می‌شود (نه با قضاوت سلیقه‌ای):
-    - خالی -> امتیاز صفر
-    - بسیار کوتاه (کمتر از ۱۵ کاراکتر) -> امتیاز پایین
-    - حاوی توضیح معنادار -> امتیاز بالا، به‌خصوص اگر با کلیدواژه‌های
-      مشکل/اقدام همپوشانی داشته باشد (نشان‌دهنده توضیح واقعی سناریو، نه
-      یک متن جایگزین بی‌ربط)."""
-    text = (case.scenario or "").strip()
-    if not text:
-        return RuleResult(0.0, "فیلد Scenario برای این Case خالی است.")
-    if len(text) < 15:
-        return RuleResult(30.0, f"فیلد Scenario بسیار کوتاه است ({len(text)} کاراکتر).")
-    if _contains_any(text, PROBLEM_KEYWORDS):
-        return RuleResult(100.0, "فیلد Scenario شامل توضیح مرتبط با مشکل گزارش‌شده است.")
-    return RuleResult(70.0, f"فیلد Scenario ثبت شده است ({len(text)} کاراکتر) ولی اشاره مستقیمی به مشکل در آن یافت نشد.")
-
-
 def timeline_reconstructable(case: CaseBundle) -> RuleResult:
     events = case.all_events_sorted
     if len(events) < 1:
@@ -350,6 +329,5 @@ RULE_FUNCTIONS = {
     "unusual_time_gap": unusual_time_gap,
     "timeline_reconstructable": timeline_reconstructable,
     "final_status_clear": final_status_clear,
-    "scenario_recorded": scenario_recorded,
     **RULE_FUNCTIONS_TASK,
 }

@@ -552,59 +552,43 @@ class Api:
             traceback.print_exc()
             return {"ok": False, "error": f"خطا در ساخت گزارش: {exc}"}
 
-    def _resolve_period(self, period: str) -> tuple[dict, dict]:
-        """cases, scores را برای period داده‌شده برمی‌گرداند. period می‌تواند
-        'period1'، 'period2' یا 'all' (ترکیب هر دو دوره، دوره دوم در صورت
-        تداخل کلید ارجحیت دارد چون جدیدتر است) باشد."""
-        if period == "all":
-            cases = {**self.result["period1"].cases, **self.result["period2"].cases}
-            scores = {**self.result["period1"].scores, **self.result["period2"].scores}
-            return cases, scores
-        pr = self.result[period] if period in ("period1", "period2") else self.result["period2"]
-        return pr.cases, pr.scores
-
     def get_case_detail(self, case_key: str, period: str = "period2") -> dict:
         if not self.result:
             return {"ok": False}
-        cases, scores = self._resolve_period(period)
-        case = cases.get(case_key) or (self.dataset.cases.get(case_key) if self.dataset else None)
+        pr = self.result[period] if period in ("period1", "period2") else self.result["period2"]
+        case = pr.cases.get(case_key) or (self.dataset.cases.get(case_key) if self.dataset else None)
         if not case:
-            return {"ok": False, "error": "مورد پیدا نشد."}
-        breakdown = scores.get(case_key)
+            return {"ok": False, "error": "Case پیدا نشد."}
+        breakdown = pr.scores.get(case_key)
         timeline = build_timeline(case)
         return {
             "ok": True,
             "case_number": case.case_number, "case_title": case.case_title,
             "customer": case.customer, "owner": case.owner, "service": case.service,
             "status": case.status, "status_reason": case.status_reason,
-            "scenario": case.scenario, "case_description": case.case_description,
             "timeline": timeline,
             "breakdown": _breakdown_to_dict(breakdown) if breakdown else None,
         }
 
     def get_cases_table(self, period: str, page: int, page_size: int,
-                         expert_filter: str | None = None, status_reason_filter: list[str] | None = None,
-                         case_number_filter: str | None = None) -> dict:
+                         expert_filter: str | None = None, status_reason_filter: str | None = None) -> dict:
         if not self.result:
             return {"ok": False}
-        cases, scores = self._resolve_period(period)
+        pr = self.result[period] if period in ("period1", "period2") else self.result["period2"]
         from analysis.experts import primary_expert
         rows = []
         experts_seen = set()
         status_reasons_seen = set()
-        query = (case_number_filter or "").strip().casefold()
-        for key, case in cases.items():
+        for key, case in pr.cases.items():
             expert = primary_expert(case)
             experts_seen.add(expert)
             if case.status_reason:
                 status_reasons_seen.add(case.status_reason)
             if expert_filter and expert != expert_filter:
                 continue
-            if status_reason_filter and (case.status_reason or "") not in status_reason_filter:
+            if status_reason_filter and (case.status_reason or "") != status_reason_filter:
                 continue
-            if query and query not in (case.case_number or "").casefold():
-                continue
-            b = scores.get(key)
+            b = pr.scores.get(key)
             rows.append({
                 "case_key": key, "case_number": case.case_number, "case_title": case.case_title,
                 "expert": expert, "status_reason": case.status_reason,
@@ -691,7 +675,7 @@ class Api:
         comp = r["comparison"]
 
         summary_rows = [
-            ["تعداد کل مورد", len(self.dataset.cases)],
+            ["تعداد کل Case", len(self.dataset.cases)],
             ["تعداد Note", len(self.dataset.notes)],
             ["تعداد Task", len(self.dataset.tasks)],
             ["شاخص سلامت داده CRM", r["data_health_index"]],
@@ -745,15 +729,15 @@ class Api:
 
         return {
             "summary": {"headers": ["شاخص", "مقدار"], "rows": summary_rows},
-            "cases": {"headers": ["دوره", "شماره مورد", "عنوان", "کارشناس", "تعداد Note", "تعداد Task",
+            "cases": {"headers": ["دوره", "شماره Case", "عنوان", "کارشناس", "تعداد Note", "تعداد Task",
                                    "Objective", "AI", "Final"], "rows": case_rows},
             "experts": {"headers": ["کارشناس", "دوره اول", "دوره دوم", "تغییر", "وضعیت",
-                                     "تعداد مورد دوره اول", "تعداد مورد دوره دوم"], "rows": expert_rows},
+                                     "تعداد Case دوره اول", "تعداد Case دوره دوم"], "rows": expert_rows},
             "criteria": {"headers": ["معیار", "دوره اول", "دوره دوم", "تغییر", "درصد تغییر"], "rows": criteria_rows},
             "comparison": {"headers": ["دسته", "دوره اول", "دوره دوم", "تغییر", "درصد تغییر"], "rows": comparison_rows},
             "data_quality": {"headers": ["شاخص", "امتیاز سلامت", "تعداد مشکل", "توضیح"], "rows": dq_rows},
-            "ai_analysis": {"headers": ["دوره", "شماره مورد", "معیار", "امتیاز", "شواهد"], "rows": ai_rows},
-            "suspicious": {"headers": ["شماره مورد", "عنوان", "دلایل"], "rows": suspicious_rows},
+            "ai_analysis": {"headers": ["دوره", "شماره Case", "معیار", "امتیاز", "شواهد"], "rows": ai_rows},
+            "suspicious": {"headers": ["شماره Case", "عنوان", "دلایل"], "rows": suspicious_rows},
         }
 
 
@@ -794,7 +778,7 @@ def _build_recommendations(comp, data_health_index) -> list[str]:
     for w in weak:
         recs.append(f"بهبود «{w['name']}» (امتیاز فعلی {w['score']}) از طریق آموزش یا Checklist ثبت.")
     if data_health_index < 80:
-        recs.append("شاخص سلامت داده CRM پایین است؛ بازبینی الزام ثبت Description و اتصال صحیح Task به مورد توصیه می‌شود.")
+        recs.append("شاخص سلامت داده CRM پایین است؛ بازبینی الزام ثبت Description و اتصال صحیح Task به Case توصیه می‌شود.")
     if not recs:
         recs.append("در حال حاضر ضعف قابل‌توجهی شناسایی نشد؛ روند فعلی حفظ شود.")
     return recs

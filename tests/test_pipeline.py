@@ -15,7 +15,7 @@ def make_note(**kwargs) -> NoteRecord:
         customer="مشتری", owner="کارشناس ۱", service="Service", case_status="Resolved",
         case_status_reason="Problem Solved", case_created_on=datetime(2026, 1, 1, 9, 0),
         case_created_by="کارشناس ۱", note_date=datetime(2026, 1, 1, 10, 0), note_author="کارشناس ۱",
-        assign_to=None, incident_type=None, case_description=None, scenario=None,
+        assign_to=None, incident_type=None, case_description=None,
     )
     base.update(kwargs)
     return NoteRecord(**base)

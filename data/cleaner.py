@@ -36,8 +36,6 @@ class CaseBundle:
     status: str | None
     status_reason: str | None
     created_on: datetime | None
-    scenario: str | None = None
-    case_description: str | None = None
     notes: list[NoteRecord] = field(default_factory=list)
     task_links: list[TaskLink] = field(default_factory=list)
 
@@ -87,8 +85,6 @@ def build_cases(
                 status=n.case_status,
                 status_reason=n.case_status_reason,
                 created_on=n.case_created_on,
-                scenario=n.scenario,
-                case_description=n.case_description,
             )
         else:
             bundle = cases[key]
@@ -99,8 +95,6 @@ def build_cases(
             bundle.status = n.case_status or bundle.status
             bundle.status_reason = n.case_status_reason or bundle.status_reason
             bundle.created_on = bundle.created_on or n.case_created_on
-            bundle.scenario = bundle.scenario or n.scenario
-            bundle.case_description = bundle.case_description or n.case_description
         cases[key].notes.append(n)
         title_norm = _normalize_title(n.case_title)
         if title_norm:
