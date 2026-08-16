@@ -10,13 +10,18 @@
 <div id="app">
 
   <div id="sidebar">
-    <div class="brand">ارزیابی کیفیت موارد CRM
+    <div class="brand">ارزیابی کیفیت CRM
       <small>برید سامانه نوین</small>
     </div>
 
+<<<<<<< HEAD
+=======
+    <div class="nav-section-title">داده و تنظیمات</div>
+>>>>>>> bfce1e7c0cb22878ef01cf368ed8102e882dce57
     <div class="nav-item active" data-page="upload">📂 بارگذاری فایل‌ها</div>
     <div class="nav-item" data-page="periods">🗓 بازه‌ها و اجرای تحلیل</div>
 
+<<<<<<< HEAD
     <div class="nav-section-title">تحلیل</div>
     <div class="nav-item report-nav disabled" data-page="dashboard">📊 داشبورد</div>
     <div class="nav-item report-nav disabled" data-page="overall">🌐 تحلیل کلی</div>
@@ -26,6 +31,17 @@
     <div class="nav-item report-nav disabled" data-page="suspicious">⚠️ موارد نیازمند بررسی<span class="nav-badge" id="suspicious-badge" style="display:none">0</span></div>
     <div class="nav-item report-nav disabled" data-page="data-quality">🩺 سلامت داده</div>
     <div class="nav-item report-nav disabled" data-page="export">⬇️ خروجی و گزارش‌ها</div>
+=======
+    <div class="nav-section-title">گزارش‌ها</div>
+    <div class="nav-item" data-page="dashboard">📊 داشبورد مدیریتی</div>
+    <div class="nav-item" data-page="comparison">🔁 مقایسه دو دوره</div>
+    <div class="nav-item" data-page="ranking">🏆 رتبه‌بندی کارشناسان</div>
+    <div class="nav-item" data-page="cases">🗂 تحلیل Caseها</div>
+    <div class="nav-item" data-page="suspicious">⚠️ Caseهای نیازمند بررسی</div>
+    <div class="nav-item" data-page="data-quality">🩺 سلامت داده CRM</div>
+    <div class="nav-item" data-page="mgmt-report">📝 جمع‌بندی مدیریتی</div>
+    <div class="nav-item" data-page="export">⬇️ Export</div>
+>>>>>>> bfce1e7c0cb22878ef01cf368ed8102e882dce57
 
     <div class="spacer"></div>
     <div class="nav-section-title">تنظیمات</div>
@@ -47,8 +63,7 @@
       <button onclick="closeCaseModal()" style="position:absolute;left:14px;top:14px;border:none;background:#eef0f4;
               width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:14px">×</button>
       <h3 id="case-detail-title"></h3>
-      <div id="case-detail-meta" style="font-size:12.5px;color:var(--muted);margin-bottom:10px"></div>
-      <div id="case-detail-scenario-desc" style="margin-bottom:14px"></div>
+      <div id="case-detail-meta" style="font-size:12.5px;color:var(--muted);margin-bottom:14px"></div>
       <div class="tabs">
         <div class="tab-btn active" data-tab="timeline" onclick="switchCaseTab('timeline')">Timeline</div>
         <div class="tab-btn" data-tab="breakdown" onclick="switchCaseTab('breakdown')">جزئیات امتیاز</div>
@@ -116,7 +131,7 @@
         <div class="card">
           <h3>فایل Notes</h3>
           <div class="upload-box">
-            <div>📄 فایل حاوی Note های مورد</div>
+            <div>📄 فایل حاوی Note های Case</div>
             <button class="btn primary" style="margin-top:12px" onclick="pickFile('notes')">انتخاب فایل...</button>
             <div class="file-name" id="notes-file-name">فایلی انتخاب نشده</div>
           </div>
@@ -184,7 +199,7 @@
     <!-- =================================================== Expert Groups -->
     <section class="page" id="page-expert-groups">
       <h1 class="page-title">گروه‌بندی کارشناسان</h1>
-      <p class="page-sub">کارشناسان را در گروه‌های دلخواه دسته‌بندی کنید. برای هر گروه مشخص کنید کارشناسان Help Desk هستند (ارزیابی بر اساس مورد) یا پشتیبانی فنی (ارزیابی بر اساس Task).</p>
+      <p class="page-sub">کارشناسان را در گروه‌های دلخواه دسته‌بندی کنید. برای هر گروه مشخص کنید کارشناسان Help Desk هستند (ارزیابی بر اساس Case) یا پشتیبانی فنی (ارزیابی بر اساس Task).</p>
 
       <div class="card" style="margin-bottom:16px" id="default-groups-card">
         <h3>گروه‌های پیش‌فرض</h3>
@@ -200,7 +215,7 @@
           <div class="field">
             <label class="field-label">واحد بررسی</label>
             <select id="new-group-unit">
-              <option value="case">مورد (مثل Help Desk)</option>
+              <option value="case">Case (مثل Help Desk)</option>
               <option value="task">Task (مثل پشتیبانی فنی)</option>
             </select>
           </div>
@@ -381,7 +396,7 @@
       <div id="ranking-empty" class="empty-state">هنوز تحلیلی اجرا نشده است.</div>
       <div id="ranking-content" style="display:none" class="card">
         <table>
-          <thead><tr><th>کارشناس</th><th>دوره اول</th><th>دوره دوم</th><th>تغییر</th><th>وضعیت</th><th>تعداد مورد (دوره ۲)</th></tr></thead>
+          <thead><tr><th>کارشناس</th><th>دوره اول</th><th>دوره دوم</th><th>تغییر</th><th>وضعیت</th><th>تعداد Case (دوره ۲)</th></tr></thead>
           <tbody id="ranking-body"></tbody>
         </table>
       </div>
@@ -394,29 +409,30 @@
         <div id="expert-export-result" style="margin-top:8px"></div>
         <div class="grid cols-2" id="expert-detail-stats" style="margin-top:10px"></div>
         <div id="expert-feedback-box" style="display:none;margin-top:16px"></div>
-        <h3 style="margin-top:16px">موارد دوره دوم (ضعیف‌ترین ابتدا)</h3>
-        <table><thead><tr><th>شماره مورد</th><th>عنوان</th><th>Final Score</th></tr></thead><tbody id="expert-cases-body"></tbody></table>
+        <h3 style="margin-top:16px">Caseهای دوره دوم (ضعیف‌ترین ابتدا)</h3>
+        <table><thead><tr><th>شماره Case</th><th>عنوان</th><th>Final Score</th></tr></thead><tbody id="expert-cases-body"></tbody></table>
       </div>
     </section>
 
     <!-- ============================================================ Cases -->
     <section class="page" id="page-cases">
+<<<<<<< HEAD
       <h1 class="page-title">جزئیات موارد / Taskها</h1>
+=======
+      <h1 class="page-title">تحلیل Caseها</h1>
+>>>>>>> bfce1e7c0cb22878ef01cf368ed8102e882dce57
       <div id="cases-empty" class="empty-state">هنوز تحلیلی اجرا نشده است.</div>
       <div id="cases-content" style="display:none">
-        <div class="row" style="margin-bottom:12px;align-items:flex-end">
+        <div class="row" style="margin-bottom:12px;align-items:center">
           <div class="field" style="max-width:160px">
             <label class="field-label">دوره</label>
-            <select id="cases-period" onchange="loadCasesTable(0)">
-              <option value="period2">دوره دوم</option>
-              <option value="period1">دوره اول</option>
-              <option value="all">همه دوره‌ها</option>
-            </select>
+            <select id="cases-period" onchange="loadCasesTable(0)"><option value="period2">دوره دوم</option><option value="period1">دوره اول</option></select>
           </div>
           <div class="field" style="max-width:220px">
             <label class="field-label">کارشناس</label>
             <select id="cases-expert-filter" onchange="loadCasesTable(0)"><option value="">همه کارشناسان</option></select>
           </div>
+<<<<<<< HEAD
           <div class="field" style="max-width:240px">
             <label class="field-label">Status Reason (چند انتخابی)</label>
             <div class="msdrop" id="cases-status-filter-wrap">
@@ -430,12 +446,17 @@
           <div class="field" style="max-width:240px">
             <label class="field-label">جستجوی شماره مورد</label>
             <input type="text" id="cases-number-search" placeholder="بخشی از شماره را وارد کنید..." oninput="debouncedCasesSearch()">
+=======
+          <div class="field" style="max-width:220px">
+            <label class="field-label">Status Reason</label>
+            <select id="cases-status-filter" onchange="loadCasesTable(0)"><option value="">همه</option></select>
+>>>>>>> bfce1e7c0cb22878ef01cf368ed8102e882dce57
           </div>
           <div style="flex:1"></div>
         </div>
         <div class="card">
           <table>
-            <thead id="cases-table-head"><tr><th>شماره مورد</th><th>عنوان</th><th>کارشناس</th><th>Note</th><th>Task</th><th>Objective</th><th>AI</th><th>Final</th></tr></thead>
+            <thead id="cases-table-head"><tr><th>شماره Case</th><th>عنوان</th><th>کارشناس</th><th>Note</th><th>Task</th><th>Objective</th><th>AI</th><th>Final</th></tr></thead>
             <tbody id="cases-table-body"></tbody>
           </table>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">
@@ -451,9 +472,10 @@
 
     <!-- ======================================================= Suspicious -->
     <section class="page" id="page-suspicious">
-      <h1 class="page-title">موارد نیازمند بررسی</h1>
-      <p class="page-sub">موارد دارای الگوی غیرعادی، مستقل از دوره زمانی انتخاب‌شده.</p>
+      <h1 class="page-title">Caseهای نیازمند بررسی</h1>
+      <p class="page-sub">Caseهای دارای الگوی غیرعادی، مستقل از دوره زمانی انتخاب‌شده.</p>
       <div id="suspicious-empty" class="empty-state">هنوز تحلیلی اجرا نشده است.</div>
+<<<<<<< HEAD
       <div id="suspicious-content" style="display:none">
         <div class="row" style="margin-bottom:12px;align-items:flex-end">
           <div class="field" style="max-width:220px">
@@ -479,6 +501,10 @@
         <div class="card">
           <table><thead><tr><th>شماره مورد</th><th>عنوان</th><th>کارشناس</th><th>دلایل</th></tr></thead><tbody id="suspicious-body"></tbody></table>
         </div>
+=======
+      <div id="suspicious-content" style="display:none" class="card">
+        <table><thead><tr><th>شماره Case</th><th>عنوان</th><th>دلایل</th></tr></thead><tbody id="suspicious-body"></tbody></table>
+>>>>>>> bfce1e7c0cb22878ef01cf368ed8102e882dce57
       </div>
     </section>
 
@@ -523,13 +549,13 @@
         <div style="margin-top:14px">
           <label class="field-label">Export یک جدول به CSV</label>
           <select id="csv-table-select">
-            <option value="cases">تحلیل موارد</option>
+            <option value="cases">Case Analysis</option>
             <option value="experts">Expert Analysis</option>
             <option value="criteria">Criteria Scores</option>
             <option value="comparison">Period Comparison</option>
             <option value="data_quality">Data Quality</option>
             <option value="ai_analysis">AI Analysis</option>
-            <option value="suspicious">موارد نیازمند بررسی</option>
+            <option value="suspicious">Suspicious Cases</option>
           </select>
           <button class="btn" style="margin-top:10px" onclick="exportCsv()">Export CSV</button>
         </div>

@@ -9,7 +9,11 @@ set "PYTHON_EXE=%VENV_DIR%\Scripts\python.exe"
 
 echo ============================================
 echo   CRM Quality Reviewer - User Mode
+<<<<<<< HEAD
 echo ============================================
+=======
+ echo ============================================
+>>>>>>> bfce1e7c0cb22878ef01cf368ed8102e882dce57
 echo.
 echo This launcher does NOT request Administrator rights.
 echo.
