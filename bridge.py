@@ -52,6 +52,7 @@ class Api:
         self.config: CriteriaConfig = self._load_config()
         self.ai_settings: AISettings = self._load_ai_settings()
         self.result: dict | None = None
+        self.overall_result: dict | None = None
         self.last_periods: tuple | None = None
         self.status = {"running": False, "done": False, "stage": "", "current": 0, "total": 0, "error": None}
         self._lock = threading.Lock()
@@ -132,6 +133,7 @@ class Api:
     def clear_dataset(self) -> dict:
         self.dataset = None
         self.result = None
+        self.overall_result = None
         return {"ok": True}
 
     # -------------------------------------------------------- expert groups
@@ -388,18 +390,13 @@ class Api:
 
     # ------------------------------------------------------------ analysis --
 
-    def start_analysis(self, p1_start: str, p1_end: str, p2_start: str, p2_end: str,
-                        expert_group: str | None = None) -> dict:
+    def start_analysis(self, p1_start: str | None, p1_end: str | None,
+                        p2_start: str | None, p2_end: str | None,
+                        expert_group: str | None = None, overall: bool = False) -> dict:
         if not self.dataset:
             return {"ok": False, "error": "ابتدا فایل‌های Notes و Tasks را بارگذاری کنید."}
         if self.status["running"]:
             return {"ok": False, "error": "یک تحلیل در حال اجراست."}
-        try:
-            period1 = (_parse_period_bound(p1_start, end=False), _parse_period_bound(p1_end, end=True))
-            period2 = (_parse_period_bound(p2_start, end=False), _parse_period_bound(p2_end, end=True))
-        except ValueError:
-            return {"ok": False, "error": "فرمت تاریخ نامعتبر است."}
-        self.last_periods = (period1, period2)
 
         expert_filter = None
         unit = "case"
@@ -414,9 +411,42 @@ class Api:
             unit = group_data.get("review_unit", "case")
 
         self.status = {"running": True, "done": False, "stage": "شروع", "current": 0, "total": 0, "error": None}
+
+        if overall:
+            thread = threading.Thread(target=self._run_overall_worker, args=(expert_filter, unit), daemon=True)
+            thread.start()
+            return {"ok": True}
+
+        try:
+            period1 = (_parse_period_bound(p1_start, end=False), _parse_period_bound(p1_end, end=True))
+            period2 = (_parse_period_bound(p2_start, end=False), _parse_period_bound(p2_end, end=True))
+        except (ValueError, TypeError):
+            self.status["running"] = False
+            return {"ok": False, "error": "فرمت تاریخ نامعتبر است."}
+        self.last_periods = (period1, period2)
+
         thread = threading.Thread(target=self._run_worker, args=(period1, period2, expert_filter, unit), daemon=True)
         thread.start()
         return {"ok": True}
+
+    def _run_overall_worker(self, expert_filter=None, unit="case"):
+        from pipeline import run_overall_analysis
+
+        def progress_cb(label, current, total):
+            self.status.update({"stage": label, "current": current, "total": total})
+
+        try:
+            result = run_overall_analysis(
+                self.dataset, self.config,
+                self.ai_settings if self.ai_settings.enabled else AISettings(enabled=False),
+                progress_cb, expert_filter, unit,
+            )
+            with self._lock:
+                self.overall_result = result
+            self.status.update({"running": False, "done": True, "stage": "پایان یافت"})
+        except Exception as exc:  # noqa: BLE001
+            traceback.print_exc()
+            self.status.update({"running": False, "done": False, "error": str(exc)})
 
     def _run_worker(self, period1, period2, expert_filter=None, unit="case"):
         def progress_cb(label, current, total):
@@ -554,8 +584,14 @@ class Api:
 
     def _resolve_period(self, period: str) -> tuple[dict, dict]:
         """cases, scores را برای period داده‌شده برمی‌گرداند. period می‌تواند
-        'period1'، 'period2' یا 'all' (ترکیب هر دو دوره، دوره دوم در صورت
-        تداخل کلید ارجحیت دارد چون جدیدتر است) باشد."""
+        'period1'، 'period2'، 'all' (ترکیب هر دو دوره، دوره دوم در صورت
+        تداخل کلید ارجحیت دارد چون جدیدتر است) یا 'overall' (نتیجه حالت
+        تحلیل کلی) باشد."""
+        if period == "overall":
+            if not self.overall_result:
+                return {}, {}
+            r = self.overall_result["result"]
+            return r.cases, r.scores
         if period == "all":
             cases = {**self.result["period1"].cases, **self.result["period2"].cases}
             scores = {**self.result["period1"].scores, **self.result["period2"].scores}
@@ -564,7 +600,7 @@ class Api:
         return pr.cases, pr.scores
 
     def get_case_detail(self, case_key: str, period: str = "period2") -> dict:
-        if not self.result:
+        if not self.result and not self.overall_result:
             return {"ok": False}
         cases, scores = self._resolve_period(period)
         case = cases.get(case_key) or (self.dataset.cases.get(case_key) if self.dataset else None)
@@ -582,12 +618,9 @@ class Api:
             "breakdown": _breakdown_to_dict(breakdown) if breakdown else None,
         }
 
-    def get_cases_table(self, period: str, page: int, page_size: int,
-                         expert_filter: str | None = None, status_reason_filter: list[str] | None = None,
-                         case_number_filter: str | None = None) -> dict:
-        if not self.result:
-            return {"ok": False}
-        cases, scores = self._resolve_period(period)
+    def _cases_table_from(self, cases: dict, scores: dict, unit: str, page: int, page_size: int,
+                           expert_filter: str | None, status_reason_filter: list[str] | None,
+                           case_number_filter: str | None) -> dict:
         from analysis.experts import primary_expert
         rows = []
         experts_seen = set()
@@ -619,17 +652,88 @@ class Api:
         return {
             "ok": True, "rows": rows[start:start + page_size], "total": total,
             "experts": sorted(experts_seen), "status_reasons": sorted(status_reasons_seen),
-            "unit": self.result.get("unit", "case"),
+            "unit": unit,
         }
+
+    def get_cases_table(self, period: str, page: int, page_size: int,
+                         expert_filter: str | None = None, status_reason_filter: list[str] | None = None,
+                         case_number_filter: str | None = None) -> dict:
+        if not self.result:
+            return {"ok": False}
+        cases, scores = self._resolve_period(period)
+        return self._cases_table_from(cases, scores, self.result.get("unit", "case"),
+                                       page, page_size, expert_filter, status_reason_filter, case_number_filter)
+
+    def get_overall_cases_table(self, page: int, page_size: int,
+                                 expert_filter: str | None = None, status_reason_filter: list[str] | None = None,
+                                 case_number_filter: str | None = None) -> dict:
+        if not self.overall_result:
+            return {"ok": False}
+        cases, scores = self._resolve_period("overall")
+        return self._cases_table_from(cases, scores, self.overall_result.get("unit", "case"),
+                                       page, page_size, expert_filter, status_reason_filter, case_number_filter)
 
     def get_suspicious(self) -> dict:
         if not self.result:
             return {"ok": False}
-        rows = [
-            {"case_key": s.case_key, "case_number": s.case_number, "case_title": s.case_title, "reasons": s.reasons}
-            for s in self.result["suspicious"]
+        rows, experts_seen, reasons_seen = [], set(), set()
+        for s in self.result["suspicious"]:
+            experts_seen.add(s.expert)
+            reasons_seen.update(s.reasons)
+            rows.append({
+                "case_key": s.case_key, "case_number": s.case_number, "case_title": s.case_title,
+                "expert": s.expert, "reasons": s.reasons,
+            })
+        return {"ok": True, "rows": rows, "unit": self.result.get("unit", "case"),
+                "experts": sorted(experts_seen), "reasons": sorted(reasons_seen)}
+
+    def get_overall_suspicious(self) -> dict:
+        if not self.overall_result:
+            return {"ok": False}
+        rows, experts_seen, reasons_seen = [], set(), set()
+        for s in self.overall_result["suspicious"]:
+            experts_seen.add(s.expert)
+            reasons_seen.update(s.reasons)
+            rows.append({
+                "case_key": s.case_key, "case_number": s.case_number, "case_title": s.case_title,
+                "expert": s.expert, "reasons": s.reasons,
+            })
+        return {"ok": True, "rows": rows, "unit": self.overall_result.get("unit", "case"),
+                "experts": sorted(experts_seen), "reasons": sorted(reasons_seen)}
+
+    def get_overall_dashboard(self) -> dict:
+        if not self.overall_result or not self.dataset:
+            return {"ok": False}
+        r = self.overall_result
+        scores = [b.final_score for b in r["result"].scores.values() if b.final_score is not None]
+        avg_score = round(sum(scores) / len(scores), 1) if scores else None
+        start, end = r["date_range"]
+        return {
+            "ok": True, "unit": r.get("unit", "case"),
+            "total_cases": len(r["result"].cases),
+            "total_experts": len(r["experts"]),
+            "total_notes": sum(len(c.notes) for c in r["result"].cases.values()),
+            "total_tasks": sum(len(c.tasks) for c in r["result"].cases.values()),
+            "data_quality": r["data_health_index"],
+            "score": avg_score,
+            "suspicious_count": len(r["suspicious"]),
+            "date_range": {"start": start.date().isoformat(), "end": end.date().isoformat()},
+        }
+
+    def get_overall_ranking(self) -> dict:
+        if not self.overall_result:
+            return {"ok": False}
+        return {"ok": True, "rows": self.overall_result["ranking"]}
+
+    def get_overall_data_quality(self) -> dict:
+        if not self.overall_result:
+            return {"ok": False}
+        checks = [
+            {"id": h.id, "name_fa": h.name_fa, "healthy_score": h.healthy_score,
+             "issue_count": h.issue_count, "detail_fa": h.detail_fa}
+            for h in self.overall_result["data_health_checks"]
         ]
-        return {"ok": True, "rows": rows, "unit": self.result.get("unit", "case")}
+        return {"ok": True, "checks": checks, "index": self.overall_result["data_health_index"]}
 
     def get_data_quality(self) -> dict:
         if not self.result:

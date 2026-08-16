@@ -127,12 +127,17 @@ def notes_writing_quality(case: CaseBundle) -> RuleResult:
 # ---------------------------------------------------------------- Tasks ----
 
 def task_presence_when_needed(case: CaseBundle) -> RuleResult:
-    staff_notes = _staff_notes(case)
-    if len(staff_notes) < 2:
-        return RuleResult(None, "حجم فعالیت روی Case برای الزام Task کافی نیست.")
-    if case.tasks:
-        return RuleResult(100.0, f"{len(case.tasks)} Task برای این Case ثبت شده است.")
-    return RuleResult(30.0, "علی‌رغم چند Note کارشناسی، هیچ Task ثبت نشده است.")
+    """طبق ممیزی داده (فاز ۰): هیچ فیلد قابل‌اعتمادی در Export فعلی وجود
+    ندارد که نشان دهد یک Case واقعاً نیازمند ارجاع به لایه دو/Task بوده یا
+    نه (نبود Escalation Level، Priority، یا SLA به‌همراه نبود تاریخچه
+    وضعیت). فرضِ قبلیِ «≥۲ Note یعنی باید Task باشد» یک قاعده کسب‌وکاری
+    تأییدنشده بود و می‌توانست بی‌دلیل به ضرر کارشناس تمام شود.
+    تا وقتی چنین داده‌ای در دسترس نباشد، این معیار برای همه Caseها N/A
+    است — نه امتیاز کامل و نه جریمه."""
+    return RuleResult(
+        None,
+        "داده قابل‌اعتمادی برای تشخیص نیاز واقعی این Case به Task/ارجاع به لایه دو در Export فعلی وجود ندارد؛ این معیار N/A است.",
+    )
 
 
 def task_case_relation(case: CaseBundle) -> RuleResult:

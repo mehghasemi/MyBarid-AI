@@ -265,18 +265,79 @@ async function runAnalysis() {
   document.getElementById('progress-area').style.display = 'block';
   document.getElementById('run-result').innerHTML = '';
 
-  const res = await api().start_analysis(p1s, p1e, p2s, p2e, expertGroup);
+  const res = await api().start_analysis(p1s, p1e, p2s, p2e, expertGroup, false);
   if (!res.ok) {
     toast(res.error, 'error');
     document.getElementById('btn-run').disabled = false;
     return;
   }
+  resetReportState();
   pollStatus();
+}
+
+async function runOverallAnalysis() {
+  if (!state.datasetLoaded) { toast('ابتدا فایل‌ها را بارگذاری کنید', 'error'); return; }
+  const expertGroup = document.getElementById('overall-expert-group').value || null;
+
+  document.getElementById('btn-run-overall').disabled = true;
+  document.getElementById('overall-progress-area').style.display = 'block';
+  document.getElementById('overall-run-result').innerHTML = '';
+
+  const res = await api().start_analysis(null, null, null, null, expertGroup, true);
+  if (!res.ok) {
+    toast(res.error, 'error');
+    document.getElementById('btn-run-overall').disabled = false;
+    return;
+  }
+  resetReportState();
+  pollStatusOverall();
+}
+
+/* پاک‌سازی کامل State/فیلتر/نتایج قبلی قبل از هر اجرای جدید تا نتیجه دوره
+   یا فیلتر قبلی هیچ‌وقت با نتیجه جدید قاطی یا پنهانش نکند. */
+function resetReportState() {
+  state.analysisDone = false;
+  state.casesPage = 0;
+  state.currentExpert = null;
+
+  ['dashboard-content', 'comparison-content', 'ranking-content', 'cases-content',
+    'suspicious-content', 'dq-content', 'mgmt-content'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  ['dashboard-empty', 'comparison-empty', 'ranking-empty', 'cases-empty',
+    'suspicious-empty', 'dq-empty', 'mgmt-empty'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'block';
+  });
+
+  const expertPanel = document.getElementById('expert-detail-panel');
+  if (expertPanel) expertPanel.style.display = 'none';
+  closeCaseModal();
+
+  // فیلترهای صفحه «تحلیل موارد»
+  const numberSearch = document.getElementById('cases-number-search');
+  if (numberSearch) numberSearch.value = '';
+  const expertFilter = document.getElementById('cases-expert-filter');
+  if (expertFilter) expertFilter.innerHTML = '<option value="">همه کارشناسان</option>';
+  clearMsDropdownSelection('cases-status-filter-wrap');
+  setMsDropdownOptions('cases-status-filter-wrap', []);
+
+  // فیلترهای صفحه «موارد نیازمند بررسی»
+  const susNumberSearch = document.getElementById('suspicious-number-search');
+  if (susNumberSearch) susNumberSearch.value = '';
+  const susExpertFilter = document.getElementById('suspicious-expert-filter');
+  if (susExpertFilter) susExpertFilter.innerHTML = '<option value="">همه کارشناسان</option>';
+  clearMsDropdownSelection('suspicious-reason-filter-wrap');
+  setMsDropdownOptions('suspicious-reason-filter-wrap', []);
+
+  document.querySelectorAll('#cases-table-body, #suspicious-body, #ranking-body, #expert-cases-body')
+    .forEach(el => { el.innerHTML = ''; });
+  updateSuspiciousBadge(0);
 }
 
 async function pollStatus() {
   const status = await api().get_status();
-  const total = status.total || 1;
   const pct = status.total ? Math.round((status.current / status.total) * 100) : 0;
   document.getElementById('progress-label').textContent = `${status.stage || ''} ${status.total ? `(${status.current}/${status.total})` : ''}`;
   document.getElementById('progress-fill').style.width = pct + '%';
@@ -294,8 +355,36 @@ async function pollStatus() {
     state.analysisDone = true;
     document.getElementById('run-result').innerHTML = `<div class="ok-box">تحلیل با موفقیت انجام شد.</div>`;
     document.getElementById('btn-run').disabled = false;
+    setReportNavEnabled(true);
     refreshAllReports();
   }
+}
+
+async function pollStatusOverall() {
+  const status = await api().get_status();
+  const pct = status.total ? Math.round((status.current / status.total) * 100) : 0;
+  document.getElementById('overall-progress-label').textContent = `${status.stage || ''} ${status.total ? `(${status.current}/${status.total})` : ''}`;
+  document.getElementById('overall-progress-fill').style.width = pct + '%';
+
+  if (status.error) {
+    document.getElementById('overall-run-result').innerHTML = `<div class="err-box">${status.error}</div>`;
+    document.getElementById('btn-run-overall').disabled = false;
+    return;
+  }
+  if (status.running) {
+    setTimeout(pollStatusOverall, 400);
+    return;
+  }
+  if (status.done) {
+    document.getElementById('overall-run-result').innerHTML = `<div class="ok-box">تحلیل کلی با موفقیت انجام شد.</div>`;
+    document.getElementById('btn-run-overall').disabled = false;
+    setReportNavEnabled(true);
+    loadOverallDashboard();
+  }
+}
+
+function setReportNavEnabled(enabled) {
+  document.querySelectorAll('.report-nav').forEach(el => el.classList.toggle('disabled', !enabled));
 }
 
 async function refreshAllReports() {
@@ -447,6 +536,37 @@ async function deleteAiKey() {
   await api().delete_ai_key();
   loadAiSettings();
   toast('کلید حذف شد');
+}
+
+/* ------------------------------------------------------------------------
+   Overall Analysis (تحلیل کلی)
+------------------------------------------------------------------------ */
+async function loadOverallDashboard() {
+  const d = await api().get_overall_dashboard();
+  if (!d.ok) return;
+  document.getElementById('overall-empty').style.display = 'none';
+  document.getElementById('overall-content').style.display = 'block';
+
+  const kpi = (label, value) => `<div class="card kpi"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+  document.getElementById('overall-kpis').innerHTML = [
+    kpi(d.unit === 'task' ? 'تعداد Task' : 'تعداد مورد', d.total_cases),
+    kpi('تعداد کارشناسان', d.total_experts),
+    kpi('امتیاز میانگین', fmt(d.score)),
+    kpi('شاخص سلامت داده', fmt(d.data_quality) + '%'),
+  ].join('');
+
+  const rank = await api().get_overall_ranking();
+  if (rank.ok) {
+    document.getElementById('overall-ranking-body').innerHTML = rank.rows.map(r => `
+      <tr class="clickable" onclick="showExpertDetail('${r.expert.replace(/'/g, "\\'")}')">
+        <td>${r.expert}</td>
+        <td><span class="badge ${scoreBadgeClass(r.score)}">${fmt(r.score)}</span></td>
+        <td>${r.case_count}</td>
+      </tr>`).join('');
+  }
+
+  const sus = await api().get_overall_suspicious();
+  if (sus.ok) updateSuspiciousBadge(sus.rows.length);
 }
 
 /* ------------------------------------------------------------------------
@@ -712,13 +832,15 @@ async function loadExpertGroupsSettings() {
       </div>`;
     }).join('') : '<span style="color:var(--muted);font-size:12.5px">هنوز گروهی ساخته نشده است.</span>';
   }
-  const select = document.getElementById('run-expert-group');
-  if (select) {
+  const groupSelects = ['run-expert-group', 'overall-expert-group'];
+  groupSelects.forEach(selId => {
+    const select = document.getElementById(selId);
+    if (!select) return;
     const current = select.value;
     select.innerHTML = '<option value="">همه کارشناسان</option>' +
       names.map(n => `<option value="${escapeHtml(n)}" data-unit="${groups[n].review_unit}">${escapeHtml(n)} (${groups[n].review_unit === 'task' ? 'Task' : 'مورد'})</option>`).join('');
     if (names.includes(current)) select.value = current;
-  }
+  });
 }
 
 /* --------------------------------------------------------- Default groups */
@@ -803,8 +925,7 @@ async function loadCasesTable(page) {
   state.casesPage = page;
   const period = document.getElementById('cases-period').value;
   const expertFilter = document.getElementById('cases-expert-filter').value || null;
-  const statusSelect = document.getElementById('cases-status-filter');
-  const statusFilter = Array.from(statusSelect.selectedOptions).map(o => o.value).filter(Boolean);
+  const statusFilter = getMsDropdownSelected('cases-status-filter-wrap');
   const numberQuery = document.getElementById('cases-number-search').value.trim() || null;
   const res = await api().get_cases_table(period, page, state.casesPageSize, expertFilter,
     statusFilter.length ? statusFilter : null, numberQuery);
@@ -814,7 +935,7 @@ async function loadCasesTable(page) {
 
   // پر کردن گزینه‌های فیلتر (فقط اگر قبلاً پر نشده یا دوره عوض شده)
   fillFilterOptions('cases-expert-filter', res.experts, expertFilter);
-  fillMultiFilterOptions('cases-status-filter', res.status_reasons, statusFilter);
+  setMsDropdownOptions('cases-status-filter-wrap', res.status_reasons);
 
   const isTask = res.unit === 'task';
   document.getElementById('cases-table-head').innerHTML = isTask
@@ -843,25 +964,85 @@ function fillFilterOptions(selectId, options, currentValue) {
   select.value = currentValue || '';
 }
 
-function fillMultiFilterOptions(selectId, options, currentValues) {
-  const select = document.getElementById(selectId);
-  const existing = Array.from(select.options).map(o => o.value).sort().join(',');
-  const incoming = (options || []).slice().sort().join(',');
-  if (existing !== incoming) {
-    select.innerHTML = (options || []).map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
-  }
-  const set = new Set(currentValues || []);
-  Array.from(select.options).forEach(o => { o.selected = set.has(o.value); });
+/* ------------------------------------------------------------------------
+   کامپوننت Multi-select Dropdown (اندازه استاندارد، Clear All، حذف تکی،
+   حفظ State هنگام باز/بسته‌شدن) — جایگزین select چندگانه بومی
+------------------------------------------------------------------------ */
+const msDropdownState = {};
+
+function initMsDropdown(wrapId, onApply) {
+  msDropdownState[wrapId] = { options: [], selected: new Set(), onApply };
 }
 
-function expandMultiSelect(e) {
-  e.target.classList.add('expanded');
-  e.target.size = Math.min(8, Math.max(4, e.target.options.length));
+function setMsDropdownOptions(wrapId, options) {
+  const st = msDropdownState[wrapId];
+  if (!st) return;
+  const optSet = new Set(options || []);
+  st.options = options || [];
+  st.selected = new Set([...st.selected].filter(v => optSet.has(v)));
+  renderMsDropdown(wrapId);
 }
-function collapseMultiSelect(e) {
-  e.target.classList.remove('expanded');
-  e.target.size = 1;
+
+function renderMsDropdown(wrapId) {
+  const st = msDropdownState[wrapId];
+  if (!st) return;
+  const summaryEl = document.getElementById(wrapId + '-summary');
+  const optionsEl = document.getElementById(wrapId + '-options');
+  if (summaryEl) {
+    summaryEl.textContent = st.selected.size === 0 ? 'همه'
+      : (st.selected.size === 1 ? [...st.selected][0] : `${st.selected.size} انتخاب‌شده`);
+  }
+  if (optionsEl) {
+    optionsEl.innerHTML = st.options.length
+      ? st.options.map(o => `
+        <label class="msdrop-option">
+          <input type="checkbox" value="${escapeHtml(o)}" ${st.selected.has(o) ? 'checked' : ''}
+                 onchange="toggleMsDropdownValue('${wrapId}', this.value, this.checked)">
+          ${escapeHtml(o)}
+        </label>`).join('')
+      : '<div style="padding:8px;color:var(--muted);font-size:12px">گزینه‌ای نیست</div>';
+  }
 }
+
+function toggleMsDropdownValue(wrapId, value, checked) {
+  const st = msDropdownState[wrapId];
+  if (!st) return;
+  if (checked) st.selected.add(value); else st.selected.delete(value);
+  renderMsDropdown(wrapId);
+  st.onApply();
+}
+
+function clearMsDropdownSelection(wrapId) {
+  const st = msDropdownState[wrapId];
+  if (!st) return;
+  st.selected.clear();
+  renderMsDropdown(wrapId);
+  st.onApply();
+}
+
+function getMsDropdownSelected(wrapId) {
+  return Array.from(msDropdownState[wrapId]?.selected || []);
+}
+
+function toggleMsDropdownPanel(wrapId) {
+  document.querySelectorAll('.msdrop-panel').forEach(p => {
+    if (p.id !== wrapId + '-panel') p.style.display = 'none';
+  });
+  const panel = document.getElementById(wrapId + '-panel');
+  if (panel) panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
+}
+
+document.addEventListener('click', (e) => {
+  document.querySelectorAll('.msdrop').forEach(wrap => {
+    if (!wrap.contains(e.target)) {
+      const panel = wrap.querySelector('.msdrop-panel');
+      if (panel) panel.style.display = 'none';
+    }
+  });
+});
+
+initMsDropdown('cases-status-filter-wrap', () => loadCasesTable(0));
+initMsDropdown('suspicious-reason-filter-wrap', () => filterSuspiciousTable());
 
 let casesSearchTimer = null;
 function debouncedCasesSearch() {
@@ -871,9 +1052,16 @@ function debouncedCasesSearch() {
 
 function filterSuspiciousTable() {
   const q = document.getElementById('suspicious-number-search').value.trim().toLowerCase();
+  const expertFilter = document.getElementById('suspicious-expert-filter').value;
+  const reasonFilter = new Set(getMsDropdownSelected('suspicious-reason-filter-wrap'));
   document.querySelectorAll('#suspicious-body tr').forEach(tr => {
     const num = (tr.dataset.caseNumber || '').toLowerCase();
-    tr.style.display = (!q || num.includes(q)) ? '' : 'none';
+    const expert = tr.dataset.expert || '';
+    const reasons = (tr.dataset.reasons || '').split('|').filter(Boolean);
+    const matchNumber = !q || num.includes(q);
+    const matchExpert = !expertFilter || expert === expertFilter;
+    const matchReason = reasonFilter.size === 0 || reasons.some(r => reasonFilter.has(r));
+    tr.style.display = (matchNumber && matchExpert && matchReason) ? '' : 'none';
   });
 }
 
@@ -946,11 +1134,22 @@ async function loadSuspicious() {
   document.getElementById('suspicious-empty').style.display = 'none';
   document.getElementById('suspicious-content').style.display = 'block';
   document.getElementById('suspicious-body').innerHTML = r.rows.map(row => `
-    <tr class="clickable" data-case-number="${escapeHtml(row.case_number || '')}" onclick="openCaseDetail('${row.case_key.replace(/'/g, "\\'")}','all')">
-      <td>${row.case_number || '—'}</td><td>${row.case_title || '—'}</td>
+    <tr class="clickable" data-case-number="${escapeHtml(row.case_number || '')}" data-expert="${escapeHtml(row.expert)}"
+        data-reasons="${escapeHtml(row.reasons.join('|'))}" onclick="openCaseDetail('${row.case_key.replace(/'/g, "\\'")}','all')">
+      <td>${row.case_number || '—'}</td><td>${row.case_title || '—'}</td><td>${row.expert}</td>
       <td><div class="chip-list">${row.reasons.map(rs => `<span class="chip">${rs}</span>`).join('')}</div></td>
     </tr>`).join('');
+  fillFilterOptions('suspicious-expert-filter', r.experts, document.getElementById('suspicious-expert-filter').value);
+  setMsDropdownOptions('suspicious-reason-filter-wrap', r.reasons);
   filterSuspiciousTable();
+  updateSuspiciousBadge(r.rows.length);
+}
+
+function updateSuspiciousBadge(count) {
+  const badge = document.getElementById('suspicious-badge');
+  if (!badge) return;
+  if (count > 0) { badge.textContent = count > 99 ? '99+' : count; badge.style.display = 'inline-flex'; }
+  else { badge.style.display = 'none'; }
 }
 
 /* ------------------------------------------------------------------------
@@ -1039,6 +1238,7 @@ function initApp() {
   appInitialized = true;
   const loadingOverlay = document.getElementById('boot-loading');
   if (loadingOverlay) loadingOverlay.style.display = 'none';
+  setReportNavEnabled(false);
   loadCriteria();
   loadAiSettings();
   loadExpertGroupsSettings();

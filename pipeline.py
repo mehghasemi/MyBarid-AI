@@ -8,7 +8,7 @@ from ai.analyzer import analyze_cases
 from ai.providers import AISettings
 from analysis.comparison import compare_periods
 from analysis.data_quality import compute_data_health
-from analysis.experts import aggregate_experts, primary_expert, rank_experts
+from analysis.experts import aggregate_experts, primary_expert, rank_experts, rank_single
 from analysis.scoring import CaseScoreBreakdown, score_case
 from analysis.suspicious import find_suspicious_cases
 from config.criteria_config import CriteriaConfig
@@ -157,4 +157,54 @@ def run_full_analysis(
         "data_health_index": health_index,
         "suspicious": suspicious,
         "unit": unit,
+    }
+
+
+def run_overall_analysis(
+    dataset: Dataset, config: CriteriaConfig, ai_settings: AISettings,
+    progress_cb: Callable[[str, int, int], None] | None = None,
+    expert_filter: set[str] | None = None, unit: str = "case",
+) -> dict:
+    """حالت «تحلیل کلی»: کل Dataset فعلی یکجا و بدون تقسیم به دو دوره تحلیل
+    می‌شود. عمداً با «ساختن دو دوره صوری» پیاده نشده؛ یک PeriodResult واحد
+    تولید و مستقیماً روی همان Rule Engine/Scoring/N/A/Coverage/Confidence
+    موجود اجرا می‌شود."""
+    all_dates = [n.note_date for n in dataset.notes if n.note_date] + \
+                [t.created_on for t in dataset.tasks if t.created_on]
+    if not all_dates:
+        raise ExcelLoadError("هیچ رکورد دارای تاریخ معتبری برای تحلیل کلی یافت نشد.")
+    start, end = min(all_dates), max(all_dates)
+
+    def cb_wrap(i, n, key):
+        if progress_cb:
+            progress_cb("تحلیل کلی", i, n)
+
+    r = run_period(dataset, config, start, end, ai_settings, cb_wrap, expert_filter, unit)
+    experts = aggregate_experts(r.cases, r.scores)
+    ranking = rank_single(experts)
+
+    health_checks, health_index = compute_data_health(
+        dataset.notes, dataset.tasks, dataset.cases, dataset.unmatched_tasks
+    )
+
+    if unit == "task":
+        all_tasks = dataset.tasks
+        if expert_filter:
+            all_tasks = [t for t in all_tasks if (t.created_by or "") in expert_filter]
+        suspicious_pool = build_task_pseudo_cases(all_tasks)
+    else:
+        suspicious_pool = dataset.cases
+        if expert_filter:
+            suspicious_pool = {k: v for k, v in dataset.cases.items() if primary_expert(v) in expert_filter}
+    suspicious = find_suspicious_cases(suspicious_pool)
+
+    return {
+        "result": r,
+        "experts": experts,
+        "ranking": ranking,
+        "data_health_checks": health_checks,
+        "data_health_index": health_index,
+        "suspicious": suspicious,
+        "unit": unit,
+        "date_range": (start, end),
     }

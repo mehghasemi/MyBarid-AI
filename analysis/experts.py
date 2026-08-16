@@ -260,3 +260,15 @@ def rank_experts(period1_stats: dict[str, ExpertStats], period2_stats: dict[str,
         })
     rows.sort(key=lambda r: (r["change"] is None, -(r["change"] or 0)))
     return rows
+
+
+def rank_single(stats: dict[str, ExpertStats]) -> list[dict]:
+    """رتبه‌بندی برای حالت «تحلیل کلی» (بدون مقایسه دو دوره)."""
+    rows = []
+    for e, s in stats.items():
+        rows.append({
+            "expert": e, "score": s.avg_final, "case_count": s.case_count,
+            "note_count": s.note_count, "task_count": s.task_count,
+        })
+    rows.sort(key=lambda r: (r["score"] is None, -(r["score"] or 0)))
+    return rows

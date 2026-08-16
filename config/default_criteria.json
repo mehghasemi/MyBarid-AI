@@ -72,9 +72,9 @@
         {
           "id": "task_presence_when_needed",
           "name_fa": "وجود Task در Caseهای نیازمند اقدام",
-          "description_fa": "اگر Case بیش از یک Note کارشناسی دارد، Task هم باید ثبت شده باشد.",
+          "description_fa": "اگر Case بیش از یک Note کارشناسی دارد، Task هم باید ثبت شده باشد. [غیرفعال طبق ممیزی فاز صفر: داده کافی/قابل‌اعتماد برای این معیار در Export فعلی وجود ندارد یا مربوط به کیفیت داده است، نه عملکرد کارشناس.]",
           "weight": 15,
-          "active": true,
+          "active": false,
           "evaluation_type": "RULE",
           "min_score": 0,
           "max_score": 100,
@@ -83,9 +83,9 @@
         {
           "id": "task_case_relation",
           "name_fa": "ارتباط Task با Case",
-          "description_fa": "میزان اطمینان اتصال Task به Case (بر اساس شماره Case یا تطبیق متنی).",
+          "description_fa": "میزان اطمینان اتصال Task به Case (بر اساس شماره Case یا تطبیق متنی). [غیرفعال طبق ممیزی فاز صفر: داده کافی/قابل‌اعتماد برای این معیار در Export فعلی وجود ندارد یا مربوط به کیفیت داده است، نه عملکرد کارشناس.]",
           "weight": 10,
-          "active": true,
+          "active": false,
           "evaluation_type": "RULE",
           "min_score": 0,
           "max_score": 100,

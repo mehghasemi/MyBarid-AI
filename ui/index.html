@@ -14,24 +14,25 @@
       <small>برید سامانه نوین</small>
     </div>
 
-    <div class="nav-section-title">تنظیمات</div>
     <div class="nav-item active" data-page="upload">📂 بارگذاری فایل‌ها</div>
-    <div class="nav-item" data-page="periods">🗓 بازه‌های زمانی و اجرا</div>
-    <div class="nav-item" data-page="expert-groups">👥 گروه‌بندی کارشناسان</div>
-    <div class="nav-item" data-page="criteria">⚖️ معیارها و وزن‌ها</div>
-    <div class="nav-item" data-page="ai-settings">🤖 تنظیمات AI</div>
+    <div class="nav-item" data-page="periods">🗓 بازه‌ها و اجرای تحلیل</div>
 
     <div class="nav-section-title">تحلیل</div>
-    <div class="nav-item" data-page="dashboard">📊 داشبورد مدیریتی</div>
-    <div class="nav-item" data-page="comparison">🔁 مقایسه دو دوره</div>
-    <div class="nav-item" data-page="ranking">🏆 رتبه‌بندی کارشناسان</div>
-    <div class="nav-item" data-page="cases">🗂 تحلیل موارد</div>
-    <div class="nav-item" data-page="suspicious">⚠️ موارد نیازمند بررسی</div>
-    <div class="nav-item" data-page="data-quality">🩺 سلامت داده CRM</div>
-    <div class="nav-item" data-page="mgmt-report">📝 جمع‌بندی مدیریتی</div>
-    <div class="nav-item" data-page="export">⬇️ Export</div>
+    <div class="nav-item report-nav disabled" data-page="dashboard">📊 داشبورد</div>
+    <div class="nav-item report-nav disabled" data-page="overall">🌐 تحلیل کلی</div>
+    <div class="nav-item report-nav disabled" data-page="comparison">🔁 مقایسه دوره‌ها</div>
+    <div class="nav-item report-nav disabled" data-page="ranking">🏆 عملکرد کارشناسان</div>
+    <div class="nav-item report-nav disabled" data-page="cases">🗂 جزئیات موارد / Taskها</div>
+    <div class="nav-item report-nav disabled" data-page="suspicious">⚠️ موارد نیازمند بررسی<span class="nav-badge" id="suspicious-badge" style="display:none">0</span></div>
+    <div class="nav-item report-nav disabled" data-page="data-quality">🩺 سلامت داده</div>
+    <div class="nav-item report-nav disabled" data-page="export">⬇️ خروجی و گزارش‌ها</div>
 
     <div class="spacer"></div>
+    <div class="nav-section-title">تنظیمات</div>
+    <div class="nav-item" data-page="expert-groups">👥 گروه‌ها و تیم‌ها</div>
+    <div class="nav-item" data-page="criteria">⚖️ معیارها و نحوه محاسبه</div>
+    <div class="nav-item" data-page="ai-settings">🤖 تنظیمات AI</div>
+
     <div class="status-pill" id="dataset-status">فایلی بارگذاری نشده است.</div>
     <div id="app-version" style="text-align:center;font-size:10.5px;opacity:.55;padding:8px 0 2px 0">نگارش: —</div>
   </div>
@@ -302,21 +303,62 @@
 
     <!-- ========================================================= Dashboard -->
     <section class="page" id="page-dashboard">
-      <h1 class="page-title">داشبورد مدیریتی</h1>
-      <p class="page-sub">نمای کلی از حجم داده، سلامت داده و روند کیفیت بین دو دوره.</p>
-      <div id="dashboard-empty" class="empty-state">هنوز تحلیلی اجرا نشده است. از منوی «بازه‌های زمانی و اجرا» شروع کنید.</div>
+      <h1 class="page-title">داشبورد</h1>
+      <p class="page-sub">نمای کلی از حجم داده، سلامت داده و روند کیفیت بین دو دوره، به‌همراه جمع‌بندی مدیریتی.</p>
+      <div id="dashboard-empty" class="empty-state">هنوز تحلیلی اجرا نشده است. از منوی «بازه‌ها و اجرای تحلیل» شروع کنید.</div>
       <div id="dashboard-content" style="display:none">
         <div class="grid cols-4" id="dashboard-kpis"></div>
         <div class="grid cols-2" style="margin-top:16px">
           <div class="card"><h3>مقایسه دسته‌های کیفیت (دوره ۱ / دوره ۲)</h3><canvas id="chart-categories" height="220"></canvas></div>
           <div class="card"><h3>روند امتیاز کلی</h3><canvas id="chart-overall" height="220"></canvas></div>
         </div>
+
+        <div id="mgmt-empty" class="empty-state" style="display:none">داده‌ای برای جمع‌بندی مدیریتی نیست.</div>
+        <div id="mgmt-content" style="margin-top:16px">
+          <div class="card" style="margin-bottom:16px"><h3>وضعیت کلی (جمع‌بندی مدیریتی)</h3><p id="mgmt-status"></p></div>
+          <div class="grid cols-2">
+            <div class="card"><h3>مهم‌ترین نقاط قوت</h3><div class="chip-list" id="mgmt-strengths"></div></div>
+            <div class="card"><h3>مهم‌ترین نقاط ضعف</h3><div class="chip-list" id="mgmt-weaknesses"></div></div>
+            <div class="card"><h3>بیشترین بهبود</h3><ul id="mgmt-improved"></ul></div>
+            <div class="card"><h3>بیشترین افت</h3><ul id="mgmt-declined"></ul></div>
+          </div>
+          <div class="card" style="margin-top:16px"><h3>مهم‌ترین مشکلات ثبت اطلاعات</h3><div class="chip-list" id="mgmt-data-issues"></div></div>
+          <div class="card" style="margin-top:16px"><h3>پیشنهادهای بهبود</h3><ul id="mgmt-recs"></ul></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ====================================================== Overall Mode -->
+    <section class="page" id="page-overall">
+      <h1 class="page-title">تحلیل کلی</h1>
+      <p class="page-sub">کل داده بارگذاری‌شده، بدون تقسیم به دو دوره و بدون مقایسه، یکجا تحلیل می‌شود.</p>
+
+      <div class="card" style="margin-bottom:16px;max-width:420px">
+        <div class="field">
+          <label class="field-label">اجرا فقط برای یک گروه کارشناسان خاص (اختیاری)</label>
+          <select id="overall-expert-group"><option value="">همه کارشناسان</option></select>
+        </div>
+        <button class="btn primary" id="btn-run-overall" onclick="runOverallAnalysis()">اجرای تحلیل کلی</button>
+        <div id="overall-progress-area" style="margin-top:14px;display:none">
+          <div id="overall-progress-label" style="font-size:12.5px;color:var(--muted)"></div>
+          <div class="progress-bar"><div id="overall-progress-fill" style="width:0%"></div></div>
+        </div>
+        <div id="overall-run-result" style="margin-top:12px"></div>
+      </div>
+
+      <div id="overall-empty" class="empty-state">هنوز تحلیل کلی اجرا نشده است.</div>
+      <div id="overall-content" style="display:none">
+        <div class="grid cols-4" id="overall-kpis"></div>
+        <div class="card" style="margin-top:16px">
+          <h3>رتبه‌بندی کارشناسان (تحلیل کلی)</h3>
+          <table><thead><tr><th>کارشناس</th><th>امتیاز</th><th>تعداد مورد</th></tr></thead><tbody id="overall-ranking-body"></tbody></table>
+        </div>
       </div>
     </section>
 
     <!-- ======================================================= Comparison -->
     <section class="page" id="page-comparison">
-      <h1 class="page-title">مقایسه دو دوره</h1>
+      <h1 class="page-title">مقایسه دوره‌ها</h1>
       <div id="comparison-empty" class="empty-state">هنوز تحلیلی اجرا نشده است.</div>
       <div id="comparison-content" style="display:none">
         <div class="card" style="margin-bottom:16px" id="comparison-narrative"></div>
@@ -335,7 +377,7 @@
 
     <!-- ========================================================== Ranking -->
     <section class="page" id="page-ranking">
-      <h1 class="page-title">رتبه‌بندی کارشناسان</h1>
+      <h1 class="page-title">عملکرد کارشناسان</h1>
       <div id="ranking-empty" class="empty-state">هنوز تحلیلی اجرا نشده است.</div>
       <div id="ranking-content" style="display:none" class="card">
         <table>
@@ -359,7 +401,7 @@
 
     <!-- ============================================================ Cases -->
     <section class="page" id="page-cases">
-      <h1 class="page-title">تحلیل موارد</h1>
+      <h1 class="page-title">جزئیات موارد / Taskها</h1>
       <div id="cases-empty" class="empty-state">هنوز تحلیلی اجرا نشده است.</div>
       <div id="cases-content" style="display:none">
         <div class="row" style="margin-bottom:12px;align-items:flex-end">
@@ -377,7 +419,13 @@
           </div>
           <div class="field" style="max-width:240px">
             <label class="field-label">Status Reason (چند انتخابی)</label>
-            <select id="cases-status-filter" multiple size="1" onchange="loadCasesTable(0)" onmousedown="expandMultiSelect(event)" onblur="collapseMultiSelect(event)"></select>
+            <div class="msdrop" id="cases-status-filter-wrap">
+              <button type="button" class="msdrop-trigger" id="cases-status-filter-wrap-summary" onclick="toggleMsDropdownPanel('cases-status-filter-wrap')">همه</button>
+              <div class="msdrop-panel" id="cases-status-filter-wrap-panel" style="display:none">
+                <div class="msdrop-actions"><span></span><button type="button" onclick="clearMsDropdownSelection('cases-status-filter-wrap')">Clear All</button></div>
+                <div id="cases-status-filter-wrap-options"></div>
+              </div>
+            </div>
           </div>
           <div class="field" style="max-width:240px">
             <label class="field-label">جستجوی شماره مورد</label>
@@ -407,12 +455,29 @@
       <p class="page-sub">موارد دارای الگوی غیرعادی، مستقل از دوره زمانی انتخاب‌شده.</p>
       <div id="suspicious-empty" class="empty-state">هنوز تحلیلی اجرا نشده است.</div>
       <div id="suspicious-content" style="display:none">
-        <div class="field" style="max-width:280px;margin-bottom:12px">
-          <label class="field-label">جستجوی شماره مورد</label>
-          <input type="text" id="suspicious-number-search" placeholder="بخشی از شماره را وارد کنید..." oninput="filterSuspiciousTable()">
+        <div class="row" style="margin-bottom:12px;align-items:flex-end">
+          <div class="field" style="max-width:220px">
+            <label class="field-label">کارشناس</label>
+            <select id="suspicious-expert-filter" onchange="filterSuspiciousTable()"><option value="">همه کارشناسان</option></select>
+          </div>
+          <div class="field" style="max-width:240px">
+            <label class="field-label">دلیل (چند انتخابی)</label>
+            <div class="msdrop" id="suspicious-reason-filter-wrap">
+              <button type="button" class="msdrop-trigger" id="suspicious-reason-filter-wrap-summary" onclick="toggleMsDropdownPanel('suspicious-reason-filter-wrap')">همه</button>
+              <div class="msdrop-panel" id="suspicious-reason-filter-wrap-panel" style="display:none">
+                <div class="msdrop-actions"><span></span><button type="button" onclick="clearMsDropdownSelection('suspicious-reason-filter-wrap')">Clear All</button></div>
+                <div id="suspicious-reason-filter-wrap-options"></div>
+              </div>
+            </div>
+          </div>
+          <div class="field" style="max-width:240px">
+            <label class="field-label">جستجوی شماره مورد</label>
+            <input type="text" id="suspicious-number-search" placeholder="بخشی از شماره را وارد کنید..." oninput="filterSuspiciousTable()">
+          </div>
+          <div style="flex:1"></div>
         </div>
         <div class="card">
-          <table><thead><tr><th>شماره مورد</th><th>عنوان</th><th>دلایل</th></tr></thead><tbody id="suspicious-body"></tbody></table>
+          <table><thead><tr><th>شماره مورد</th><th>عنوان</th><th>کارشناس</th><th>دلایل</th></tr></thead><tbody id="suspicious-body"></tbody></table>
         </div>
       </div>
     </section>

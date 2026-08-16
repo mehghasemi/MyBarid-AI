@@ -11,10 +11,13 @@ class SuspiciousCase:
     case_key: str
     case_number: str | None
     case_title: str | None
+    expert: str
     reasons: list[str]
 
 
 def find_suspicious_cases(cases: dict[str, CaseBundle]) -> list[SuspiciousCase]:
+    from analysis.experts import primary_expert
+
     flagged: list[SuspiciousCase] = []
     for key, case in cases.items():
         reasons: list[str] = []
@@ -47,6 +50,7 @@ def find_suspicious_cases(cases: dict[str, CaseBundle]) -> list[SuspiciousCase]:
 
         if reasons:
             flagged.append(SuspiciousCase(
-                case_key=key, case_number=case.case_number, case_title=case.case_title, reasons=reasons,
+                case_key=key, case_number=case.case_number, case_title=case.case_title,
+                expert=primary_expert(case), reasons=reasons,
             ))
     return flagged

@@ -85,6 +85,28 @@ html, body {
   opacity: 1;
   font-weight: 500;
 }
+.msdrop { position: relative; }
+.nav-item.disabled { opacity: .35; pointer-events: none; }
+.msdrop-trigger {
+  width: 100%; text-align: right; padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: #fff; font-size: 12.5px; cursor: pointer; font-family: inherit;
+  display: flex; justify-content: space-between; align-items: center; gap: 6px;
+}
+.msdrop-trigger:after { content: '▾'; color: var(--muted); font-size: 10px; }
+.msdrop-panel {
+  position: absolute; z-index: 60; top: calc(100% + 4px); right: 0; left: 0;
+  background: #fff; border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.14); max-height: 230px; overflow-y: auto; padding: 6px;
+}
+.msdrop-actions { display: flex; justify-content: space-between; align-items: center; padding: 3px 6px 8px 6px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.msdrop-actions button { font-size: 11px; border: none; background: none; color: var(--accent); cursor: pointer; font-family: inherit; }
+.msdrop-option { display: flex; align-items: center; gap: 7px; padding: 6px 6px; font-size: 12.5px; cursor: pointer; border-radius: 5px; }
+.msdrop-option:hover { background: var(--primary-light); }
+.nav-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; margin-inline-start: auto;
+  background: var(--bad); color: #fff; border-radius: 20px; font-size: 10.5px; font-weight: 700;
+}
 .nav-section-title {
   padding: 14px 18px 4px 18px;
   font-size: 11px;
