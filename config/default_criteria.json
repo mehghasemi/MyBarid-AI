@@ -251,6 +251,17 @@
           "min_score": 0,
           "max_score": 100,
           "unit": "case"
+        },
+        {
+          "id": "scenario_recorded",
+          "name_fa": "ثبت سناریوی وقوع (Scenario)",
+          "description_fa": "کیفیت و وجود فیلد Scenario که کارشناس هنگام مدیریت Case ثبت می‌کند.",
+          "weight": 12,
+          "active": true,
+          "evaluation_type": "RULE",
+          "min_score": 0,
+          "max_score": 100,
+          "unit": "case"
         }
       ]
     },

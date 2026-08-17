@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from data.cleaner import CaseBundle
+from config.thresholds_config import get_thresholds
 
 PORTAL_AUTHORS = {"portal portal", "پرتال", "customer portal"}
 
@@ -183,6 +184,7 @@ def task_result_recorded(case: CaseBundle) -> RuleResult:
 # ------------------------------------------------------------ Timing -----
 
 def first_response_time(case: CaseBundle) -> RuleResult:
+    th = get_thresholds().first_response_hours
     anchor = case.created_on or (min((n.note_date for n in case.notes if n.note_date), default=None))
     staff_set = set(id(n) for n in _staff_notes(case))
     staff_events = [(kind, when, obj) for kind, when, obj in case.all_events_sorted
@@ -193,18 +195,19 @@ def first_response_time(case: CaseBundle) -> RuleResult:
     delta_hours = (first_when - anchor).total_seconds() / 3600
     if delta_hours < 0:
         return RuleResult(None, "ترتیب زمانی نامعتبر است (اولین اقدام قبل از ایجاد Case ثبت شده).")
-    if delta_hours <= 4:
-        score, note = 100, "اولین اقدام کارشناسی ظرف ۴ ساعت انجام شده."
-    elif delta_hours <= 24:
-        score, note = 80, "اولین اقدام کارشناسی ظرف یک روز کاری انجام شده."
-    elif delta_hours <= 72:
-        score, note = 55, "اولین اقدام کارشناسی با تأخیر (تا ۳ روز) انجام شده."
+    if delta_hours <= th["excellent"]:
+        score, note = 100, f"اولین اقدام کارشناسی ظرف {th['excellent']} ساعت انجام شده."
+    elif delta_hours <= th["good"]:
+        score, note = 80, f"اولین اقدام کارشناسی ظرف {th['good']} ساعت انجام شده."
+    elif delta_hours <= th["acceptable"]:
+        score, note = 55, f"اولین اقدام کارشناسی با تأخیر (تا {th['acceptable']} ساعت) انجام شده."
     else:
-        score, note = 25, "اولین اقدام کارشناسی با تأخیر قابل‌توجه (بیش از ۳ روز) انجام شده."
+        score, note = 25, f"اولین اقدام کارشناسی با تأخیر قابل‌توجه (بیش از {th['acceptable']} ساعت) انجام شده."
     return RuleResult(score, f"{note} ({round(delta_hours,1)} ساعت فاصله)")
 
 
 def followup_delay(case: CaseBundle) -> RuleResult:
+    th = get_thresholds().followup_grace_days
     pending = [t for t in case.tasks if (t.follow_up_needed or "").strip().casefold() == "yes" and t.next_follow_up]
     if not pending:
         return RuleResult(None, "Task دارای Follow-up برنامه‌ریزی‌شده برای این Case وجود ندارد.")
@@ -216,9 +219,9 @@ def followup_delay(case: CaseBundle) -> RuleResult:
             penalties.append(0)
             continue
         gap_days = (later[0] - t.next_follow_up).total_seconds() / 86400
-        if gap_days <= 1:
+        if gap_days <= th["good"]:
             penalties.append(100)
-        elif gap_days <= 3:
+        elif gap_days <= th["acceptable"]:
             penalties.append(65)
         else:
             penalties.append(25)
@@ -228,6 +231,7 @@ def followup_delay(case: CaseBundle) -> RuleResult:
 
 
 def due_date_compliance(case: CaseBundle) -> RuleResult:
+    grace = get_thresholds().due_date_grace_hours
     with_due = [t for t in case.tasks if t.due_date]
     if not with_due:
         return RuleResult(None, "Task دارای Due Date برای این Case وجود ندارد.")
@@ -239,7 +243,7 @@ def due_date_compliance(case: CaseBundle) -> RuleResult:
         gap_hours = (finish - t.due_date).total_seconds() / 3600
         if gap_hours <= 0:
             scores.append(100)
-        elif gap_hours <= 24:
+        elif gap_hours <= grace:
             scores.append(70)
         else:
             scores.append(30)
@@ -250,6 +254,18 @@ def due_date_compliance(case: CaseBundle) -> RuleResult:
 
 
 def unusual_time_gap(case: CaseBundle) -> RuleResult:
+    """طبق تصمیم فاز صفر: اگر Status Reason فعلی Case نشان‌دهنده انتظار
+    مشروع (Waiting for Customer و مشابه) باشد، این معیار N/A می‌شود -- نه
+    اینکه زمان متوقف شود (چون تاریخ دقیق شروع/پایان انتظار در داده فعلی
+    ثبت نشده و چنین Clock-pause ای قابل‌اعتماد نیست) و نه اینکه به‌طور
+    ناعادلانه کارشناس را جریمه کند."""
+    th = get_thresholds()
+    if (case.status_reason or "").strip() in th.wait_status_reasons:
+        return RuleResult(
+            None,
+            f"وضعیت فعلی «{case.status_reason}» نشان‌دهنده انتظار مشروع است؛ چون تاریخ دقیق شروع/پایان "
+            "انتظار در داده ثبت نشده، این معیار N/A است (نه محاسبه، نه جریمه).",
+        )
     events = [when for _, when, _ in case.all_events_sorted if when]
     if len(events) < 2:
         return RuleResult(None, "برای بررسی فاصله زمانی حداقل دو رویداد لازم است.")
@@ -257,15 +273,36 @@ def unusual_time_gap(case: CaseBundle) -> RuleResult:
     gaps_days = [(events[i + 1] - events[i]).total_seconds() / 86400 for i in range(len(events) - 1)]
     max_gap = max(gaps_days)
     is_open = (case.status or "").strip().casefold() not in {"resolved", "closed", "cancelled"}
-    threshold = 14 if is_open else 30
+    threshold = th.unusual_gap_days["open_case"] if is_open else th.unusual_gap_days["closed_case"]
     if max_gap <= threshold / 2:
         return RuleResult(100.0, f"بیشترین فاصله بین رویدادها {round(max_gap,1)} روز است.")
     if max_gap <= threshold:
         return RuleResult(65.0, f"فاصله {round(max_gap,1)} روزه بین دو رویداد مشاهده شد.")
-    return RuleResult(25.0, f"فاصله غیرمعمول {round(max_gap,1)} روزه بین دو رویداد مشاهده شد.")
+    return RuleResult(25.0, f"فاصله غیرمعمول {round(max_gap,1)} روزه بین دو رویداد مشاهده شد (بدون توضیح انتظار مشروع در داده).")
 
 
 # --------------------------------------------------------- Documentation --
+
+# --------------------------------------------------------- Scenario -----
+
+def scenario_recorded(case: CaseBundle) -> RuleResult:
+    """کیفیت ثبت فیلد Scenario (سناریوی وقوع مشکل). این فیلد را کارشناس
+    هنگام ثبت/مدیریت Case وارد می‌کند و طبق تعریف Rule-Based زیر ارزیابی
+    می‌شود (نه با قضاوت سلیقه‌ای):
+    - خالی -> امتیاز صفر
+    - بسیار کوتاه (کمتر از ۱۵ کاراکتر) -> امتیاز پایین
+    - حاوی توضیح معنادار -> امتیاز بالا، به‌خصوص اگر با کلیدواژه‌های
+      مشکل/اقدام همپوشانی داشته باشد (نشان‌دهنده توضیح واقعی سناریو، نه
+      یک متن جایگزین بی‌ربط)."""
+    text = (case.scenario or "").strip()
+    if not text:
+        return RuleResult(0.0, "فیلد Scenario برای این Case خالی است.")
+    if len(text) < 15:
+        return RuleResult(30.0, f"فیلد Scenario بسیار کوتاه است ({len(text)} کاراکتر).")
+    if _contains_any(text, PROBLEM_KEYWORDS):
+        return RuleResult(100.0, "فیلد Scenario شامل توضیح مرتبط با مشکل گزارش‌شده است.")
+    return RuleResult(70.0, f"فیلد Scenario ثبت شده است ({len(text)} کاراکتر) ولی اشاره مستقیمی به مشکل در آن یافت نشد.")
+
 
 def timeline_reconstructable(case: CaseBundle) -> RuleResult:
     events = case.all_events_sorted
@@ -334,5 +371,6 @@ RULE_FUNCTIONS = {
     "unusual_time_gap": unusual_time_gap,
     "timeline_reconstructable": timeline_reconstructable,
     "final_status_clear": final_status_clear,
+    "scenario_recorded": scenario_recorded,
     **RULE_FUNCTIONS_TASK,
 }

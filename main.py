@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import os
 import sys
 import traceback
 from pathlib import Path
@@ -64,6 +65,13 @@ def main():
     # و باعث می‌شود کل رابط کاربری (دکمه‌ها، معیارها، ...) بدون هیچ خطای واضحی
     # از کار بیفتد. به همین دلیل، به‌جای اجازه‌دادن به این Fallback خاموش،
     # خطا را می‌گیریم و به کاربر راهنمایی روشن می‌دهیم.
+    # روی ویندوز، موتور نمایش را صراحتاً EdgeChromium (WebView2) درخواست می‌کنیم.
+    # همچنین با یک آرگومان اضافه به WebView2 Runtime، تلاش می‌کنیم مشکل شناخته‌شده
+    # Hang هنگام راه‌اندازی (که به تعامل بین WinForms Accessibility و WebView2
+    # مربوط است) را بدون نیاز به دسترسی Administrator کاهش دهیم؛ این برنامه
+    # عمداً به دسترسی ادمین نیاز ندارد.
+    if sys.platform == "win32":
+        os.environ.setdefault("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--disable-renderer-accessibility")
     gui_backend = "edgechromium" if sys.platform == "win32" else None
     try:
         webview.start(gui=gui_backend, debug="--debug" in sys.argv)
@@ -80,12 +88,8 @@ def main():
             "۲. اگر اینترنت شرکتی محدود است: عبارت «WebView2 Runtime Standalone "
             "Installer» را جستجو و نسخه آفلاین کامل را از سایت microsoft.com دانلود/نصب کنید.\n"
             "۳. بعد از نصب، کامپیوتر را Restart کرده و دوباره run.cmd را اجرا کنید.\n"
-            "۴. اگر مشکل ادامه داشت: روی run.cmd راست‌کلیک کرده و «Run as administrator» را "
-            "بزنید. حتی کاربرانی که عضو گروه Administrator هستند، به‌طور پیش‌فرض با دسترسی "
-            "محدود اجرا می‌شوند مگر صریحاً درخواست Elevation شود؛ این موضوع می‌تواند باعث "
-            "هنگ‌کردن یا کرش برنامه هنگام راه‌اندازی WebView2 شود (run.cmd از نگارش فعلی خودش "
-            "این کار را خودکار انجام می‌دهد، اما در برخی سیستم‌های محدودشده شرکتی ممکن است "
-            "نیاز به تأیید دستی هم باشد).\n\n"
+            "این برنامه به دسترسی Administrator نیاز ندارد و نباید نیاز داشته باشد؛ "
+            "اگر پس از به‌روزرسانی WebView2 باز هم این خطا را دیدید، لطفاً به سازنده اطلاع دهید.\n\n"
             f"جزئیات فنی خطا:\n{exc}"
         )
         sys.exit(1)

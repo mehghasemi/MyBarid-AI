@@ -63,6 +63,8 @@ def filter_period(
         bundle.customer = bundle.customer or full.customer
         bundle.owner = bundle.owner or full.owner
         bundle.service = bundle.service or full.service
+        bundle.scenario = bundle.scenario or full.scenario
+        bundle.case_description = bundle.case_description or full.case_description
     if expert_filter:
         cases = {k: v for k, v in cases.items() if primary_expert(v) in expert_filter}
     return cases, unmatched

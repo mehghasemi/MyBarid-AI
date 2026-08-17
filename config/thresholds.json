@@ -1,0 +1,7 @@
+{
+  "first_response_hours": {"excellent": 4, "good": 24, "acceptable": 72},
+  "due_date_grace_hours": 24,
+  "followup_grace_days": {"good": 1, "acceptable": 3},
+  "unusual_gap_days": {"open_case": 14, "closed_case": 30},
+  "wait_status_reasons": ["Waiting for Customer", "Waiting for Third Party", "On Hold", "Suspended"]
+}

@@ -264,3 +264,8 @@ label.field-label { display:block; font-size: 12px; color: var(--muted); margin-
 .suggestion-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
 .suggestion-row .target { width: 150px; font-weight: 500; }
 .suggestion-row select { flex: 1; }
+
+select[multiple] { min-height: 34px; padding: 4px; }
+select[multiple].expanded { position: absolute; z-index: 50; min-height: 140px; background: #fff; box-shadow: 0 6px 20px rgba(0,0,0,.15); }
+.scenario-box { background: var(--primary-light); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; white-space: pre-wrap; margin-bottom: 8px; }
+.scenario-box .label { font-weight: 700; font-size: 11.5px; color: var(--primary); display: block; margin-bottom: 4px; }

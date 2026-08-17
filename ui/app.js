@@ -202,7 +202,7 @@ async function doUpload() {
   state.datasetLoaded = true;
   state.dateBounds = res.date_bounds;
   document.getElementById('dataset-status').textContent =
-    `${res.total_cases} Case | داده بارگذاری شد`;
+    `${res.total_cases} مورد | داده بارگذاری شد`;
 
   const s = (label, sm) => `
     <div class="card">
@@ -210,7 +210,7 @@ async function doUpload() {
       <table>
         <tr><td>نام فایل</td><td>${sm.file_name}</td></tr>
         <tr><td>تعداد رکورد</td><td>${sm.total_rows}</td></tr>
-        <tr><td>Case یکتا</td><td>${sm.unique_cases}</td></tr>
+        <tr><td>مورد یکتا</td><td>${sm.unique_cases}</td></tr>
         <tr><td>رکورد ناقص</td><td>${sm.incomplete_rows}</td></tr>
         <tr><td>ستون‌های شناسایی‌شده</td><td>${sm.usable_columns} از ${sm.total_columns}</td></tr>
         <tr><td>وضعیت اعتبارسنجی</td><td>${sm.missing_required_labels.length ? '<span class="badge bad">ناقص</span>' : '<span class="badge good">موفق</span>'}</td></tr>
@@ -219,7 +219,7 @@ async function doUpload() {
     </div>`;
 
   resultBox.innerHTML = `
-    <div class="ok-box">فایل‌ها با موفقیت پردازش شدند: ${res.total_cases} Case، ${res.unmatched_tasks} Task بدون اتصال قطعی به Case.</div>
+    <div class="ok-box">فایل‌ها با موفقیت پردازش شدند: ${res.total_cases} مورد، ${res.unmatched_tasks} Task بدون اتصال قطعی به مورد.</div>
     <div class="grid cols-2">${s('فایل Notes', res.notes_summary)}${s('فایل Tasks', res.tasks_summary)}</div>`;
 
   // پیش‌فرض بازه‌ها بر اساس داده واقعی
@@ -582,7 +582,7 @@ async function loadDashboard() {
     <div class="card kpi"><div class="label">${label}</div><div class="value ${typeof value === 'string' && value.length > 6 ? 'small' : ''}">${value}</div>${extra || ''}</div>`;
 
   document.getElementById('dashboard-kpis').innerHTML = [
-    kpi(d.unit === 'task' ? 'تعداد Task' : 'تعداد Case', d.total_cases),
+    kpi(d.unit === 'task' ? 'تعداد Task' : 'تعداد مورد', d.total_cases),
     kpi('تعداد کارشناسان', d.total_experts),
     kpi('تعداد Note', d.total_notes),
     kpi('تعداد Task', d.total_tasks),
@@ -671,7 +671,7 @@ function strengthCard(s, isPositive) {
         <b style="font-size:12.5px">${s.criterion}</b>
         <span class="badge ${cls}">${fmt(s.avg_score)}</span>
       </div>
-      <div style="font-size:11.5px;color:var(--muted);margin:4px 0">میانگین در ${s.count} Case بررسی‌شده (دسته: ${s.category})</div>
+      <div style="font-size:11.5px;color:var(--muted);margin:4px 0">میانگین در ${s.count} مورد بررسی‌شده (دسته: ${s.category})</div>
       <div class="chip-list">${cases}</div>
     </div>`;
 }
@@ -688,7 +688,7 @@ async function showExpertDetail(expert) {
     if (!s) return `<div class="card"><h3>${title}</h3><p style="color:var(--muted)">داده‌ای در این دوره وجود ندارد.</p></div>`;
     return `<div class="card"><h3>${title}</h3>
       <table>
-        <tr><td>تعداد Case</td><td>${s.case_count}</td></tr>
+        <tr><td>تعداد مورد</td><td>${s.case_count}</td></tr>
         <tr><td>تعداد Note</td><td>${s.note_count}</td></tr>
         <tr><td>تعداد Task</td><td>${s.task_count}</td></tr>
         <tr><td>Objective</td><td>${fmt(s.avg_objective)}</td></tr>
@@ -818,7 +818,7 @@ async function loadExpertGroupsSettings() {
   if (listBox) {
     listBox.innerHTML = names.length ? names.map(name => {
       const g = groups[name];
-      const unitLabel = g.review_unit === 'task' ? 'بر اساس Task' : 'بر اساس Case';
+      const unitLabel = g.review_unit === 'task' ? 'بر اساس Task' : 'بر اساس مورد';
       return `
       <div class="card" style="padding:12px 14px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -838,7 +838,7 @@ async function loadExpertGroupsSettings() {
     if (!select) return;
     const current = select.value;
     select.innerHTML = '<option value="">همه کارشناسان</option>' +
-      names.map(n => `<option value="${escapeHtml(n)}" data-unit="${groups[n].review_unit}">${escapeHtml(n)} (${groups[n].review_unit === 'task' ? 'Task' : 'Case'})</option>`).join('');
+      names.map(n => `<option value="${escapeHtml(n)}" data-unit="${groups[n].review_unit}">${escapeHtml(n)} (${groups[n].review_unit === 'task' ? 'Task' : 'مورد'})</option>`).join('');
     if (names.includes(current)) select.value = current;
   });
 }
@@ -866,7 +866,7 @@ async function loadDefaultGroupSuggestions() {
     }).join('');
     return `
       <div class="card" style="margin-bottom:12px">
-        <h3>${escapeHtml(groupName)} <span class="badge muted">${data.review_unit === 'task' ? 'بر اساس Task' : 'بر اساس Case'}</span></h3>
+        <h3>${escapeHtml(groupName)} <span class="badge muted">${data.review_unit === 'task' ? 'بر اساس Task' : 'بر اساس مورد'}</span></h3>
         ${rows}
       </div>`;
   }).join('');
@@ -925,31 +925,22 @@ async function loadCasesTable(page) {
   state.casesPage = page;
   const period = document.getElementById('cases-period').value;
   const expertFilter = document.getElementById('cases-expert-filter').value || null;
-<<<<<<< HEAD
   const statusFilter = getMsDropdownSelected('cases-status-filter-wrap');
   const numberQuery = document.getElementById('cases-number-search').value.trim() || null;
   const res = await api().get_cases_table(period, page, state.casesPageSize, expertFilter,
     statusFilter.length ? statusFilter : null, numberQuery);
-=======
-  const statusFilter = document.getElementById('cases-status-filter').value || null;
-  const res = await api().get_cases_table(period, page, state.casesPageSize, expertFilter, statusFilter);
->>>>>>> bfce1e7c0cb22878ef01cf368ed8102e882dce57
   if (!res.ok) return;
   document.getElementById('cases-empty').style.display = 'none';
   document.getElementById('cases-content').style.display = 'block';
 
   // پر کردن گزینه‌های فیلتر (فقط اگر قبلاً پر نشده یا دوره عوض شده)
   fillFilterOptions('cases-expert-filter', res.experts, expertFilter);
-<<<<<<< HEAD
   setMsDropdownOptions('cases-status-filter-wrap', res.status_reasons);
-=======
-  fillFilterOptions('cases-status-filter', res.status_reasons, statusFilter);
->>>>>>> bfce1e7c0cb22878ef01cf368ed8102e882dce57
 
   const isTask = res.unit === 'task';
   document.getElementById('cases-table-head').innerHTML = isTask
     ? '<tr><th>شماره Task</th><th>عنوان</th><th>کارشناس</th><th colspan="2">—</th><th>Objective</th><th>AI</th><th>Final</th></tr>'
-    : '<tr><th>شماره Case</th><th>عنوان</th><th>کارشناس</th><th>Note</th><th>Task</th><th>Objective</th><th>AI</th><th>Final</th></tr>';
+    : '<tr><th>شماره مورد</th><th>عنوان</th><th>کارشناس</th><th>Note</th><th>Task</th><th>Objective</th><th>AI</th><th>Final</th></tr>';
 
   document.getElementById('cases-table-body').innerHTML = res.rows.map(r => `
     <tr class="clickable" onclick="openCaseDetail('${r.case_key.replace(/'/g, "\\'")}','${period}')">
@@ -973,7 +964,6 @@ function fillFilterOptions(selectId, options, currentValue) {
   select.value = currentValue || '';
 }
 
-<<<<<<< HEAD
 /* ------------------------------------------------------------------------
    کامپوننت Multi-select Dropdown (اندازه استاندارد، Clear All، حذف تکی،
    حفظ State هنگام باز/بسته‌شدن) — جایگزین select چندگانه بومی
@@ -1075,18 +1065,26 @@ function filterSuspiciousTable() {
   });
 }
 
-=======
->>>>>>> bfce1e7c0cb22878ef01cf368ed8102e882dce57
 function casesPrev() { if (state.casesPage > 0) loadCasesTable(state.casesPage - 1); }
 function casesNext() { loadCasesTable(state.casesPage + 1); }
 
 async function openCaseDetail(caseKey, period) {
   const d = await api().get_case_detail(caseKey, period);
-  if (!d.ok) { toast(d.error || 'خطا در بارگذاری Case', 'error'); return; }
+  if (!d.ok) { toast(d.error || 'خطا در بارگذاری مورد', 'error'); return; }
   document.getElementById('case-modal-overlay').style.display = 'flex';
   document.getElementById('case-detail-title').textContent = `${d.case_number || ''} — ${d.case_title || ''}`;
   document.getElementById('case-detail-meta').innerHTML =
     `مشتری: ${d.customer || '—'} | Owner: ${d.owner || '—'} | سرویس: ${d.service || '—'} | وضعیت: ${d.status || '—'} / ${d.status_reason || ''}`;
+
+  const scenarioBox = document.getElementById('case-detail-scenario-desc');
+  let scenarioHtml = '';
+  if (d.scenario && d.scenario.trim()) {
+    scenarioHtml += `<div class="scenario-box"><span class="label">سناریوی وقوع (Scenario)</span>${escapeHtml(d.scenario)}</div>`;
+  }
+  if (d.case_description && d.case_description.trim()) {
+    scenarioHtml += `<div class="scenario-box"><span class="label">شرح مورد (Description)</span>${escapeHtml(d.case_description)}</div>`;
+  }
+  scenarioBox.innerHTML = scenarioHtml;
 
   document.getElementById('case-timeline').innerHTML = d.timeline.map(ev => `
     <div class="timeline-item ${ev.role.includes('مشتری') ? 'customer' : ''}">
@@ -1106,7 +1104,7 @@ async function openCaseDetail(caseKey, period) {
         <td style="font-size:12px;color:var(--muted)">${escapeHtml(c.evidence || '')}</td></tr>`).join('');
   } else {
     document.getElementById('case-score-summary').innerHTML = '';
-    document.getElementById('case-breakdown-body').innerHTML = '<tr><td colspan="5" style="color:var(--muted)">برای این Case امتیازی در دوره انتخاب‌شده محاسبه نشده است.</td></tr>';
+    document.getElementById('case-breakdown-body').innerHTML = '<tr><td colspan="5" style="color:var(--muted)">برای این مورد امتیازی در دوره انتخاب‌شده محاسبه نشده است.</td></tr>';
   }
   switchCaseTab('timeline');
 }
@@ -1136,7 +1134,6 @@ async function loadSuspicious() {
   document.getElementById('suspicious-empty').style.display = 'none';
   document.getElementById('suspicious-content').style.display = 'block';
   document.getElementById('suspicious-body').innerHTML = r.rows.map(row => `
-<<<<<<< HEAD
     <tr class="clickable" data-case-number="${escapeHtml(row.case_number || '')}" data-expert="${escapeHtml(row.expert)}"
         data-reasons="${escapeHtml(row.reasons.join('|'))}" onclick="openCaseDetail('${row.case_key.replace(/'/g, "\\'")}','all')">
       <td>${row.case_number || '—'}</td><td>${row.case_title || '—'}</td><td>${row.expert}</td>
@@ -1153,12 +1150,6 @@ function updateSuspiciousBadge(count) {
   if (!badge) return;
   if (count > 0) { badge.textContent = count > 99 ? '99+' : count; badge.style.display = 'inline-flex'; }
   else { badge.style.display = 'none'; }
-=======
-    <tr class="clickable" onclick="openCaseDetail('${row.case_key.replace(/'/g, "\\'")}','period2')">
-      <td>${row.case_number || '—'}</td><td>${row.case_title || '—'}</td>
-      <td><div class="chip-list">${row.reasons.map(rs => `<span class="chip">${rs}</span>`).join('')}</div></td>
-    </tr>`).join('');
->>>>>>> bfce1e7c0cb22878ef01cf368ed8102e882dce57
 }
 
 /* ------------------------------------------------------------------------

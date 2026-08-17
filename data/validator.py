@@ -77,6 +77,7 @@ class NoteRecord:
     assign_to: str | None
     incident_type: str | None
     case_description: str | None
+    scenario: str | None
 
     @property
     def case_key(self) -> str | None:
@@ -171,6 +172,7 @@ def normalize_notes(loaded: LoadedSheet) -> tuple[list[NoteRecord], MappingResul
             assign_to=_get(row, mr.mapping, "assign_to"),
             incident_type=_get(row, mr.mapping, "incident_type"),
             case_description=_get(row, mr.mapping, "case_description"),
+            scenario=_get(row, mr.mapping, "scenario"),
         )
         if rec.case_key:
             case_keys.add(rec.case_key)
