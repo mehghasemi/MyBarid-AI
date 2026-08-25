@@ -27,6 +27,10 @@ outputs/
 .DS_Store
 Thumbs.db
 
+# PyInstaller build output
+/build/
+/dist/
+
 # کلید و اسرار (هرگز نباید Commit شوند)
 *.env
 secrets.json
