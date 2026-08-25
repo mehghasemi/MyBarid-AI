@@ -533,6 +533,28 @@ async function loadAiSettings() {
   document.getElementById('ai-max-tokens').value = s.max_tokens;
   document.getElementById('ai-batch-size').value = s.batch_size;
   document.getElementById('ai-key-masked').textContent = s.has_key ? `(کلید ذخیره‌شده: ${s.api_key_masked})` : '(کلیدی ذخیره نشده)';
+  loadAiPresets();
+}
+
+async function loadAiPresets() {
+  const select = document.getElementById('ai-preset');
+  if (!select) return;
+  const presets = await api().get_ai_presets();
+  select.innerHTML = '<option value="">انتخاب کنید...</option>' +
+    presets.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('');
+  select._aiPresets = presets;
+}
+
+function applyAiPreset() {
+  const select = document.getElementById('ai-preset');
+  const preset = (select._aiPresets || []).find(p => p.id === select.value);
+  if (!preset) return;
+  document.getElementById('ai-enabled').value = 'true';
+  document.getElementById('ai-provider').value = preset.provider;
+  document.getElementById('ai-model').value = preset.model;
+  document.getElementById('ai-base-url').value = preset.base_url;
+  document.getElementById('ai-preset-note').textContent = preset.note || '';
+  toast('Preset مدل اعمال شد؛ API Key را وارد و تنظیمات را ذخیره کنید.', 'success');
 }
 
 async function saveAiSettings() {

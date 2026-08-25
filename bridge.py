@@ -394,6 +394,44 @@ class Api:
             "enabled": s.enabled, "api_key_masked": db.mask_key(s.api_key), "has_key": bool(s.api_key),
         }
 
+    def get_ai_presets(self) -> list[dict]:
+        """Built-in starter configurations; keys are never included or stored."""
+        return [
+            {
+                "id": "gemini-flash",
+                "name": "Google Gemini 2.5 Flash (سهمیه رایگان در صورت دسترسی)",
+                "provider": "gemini", "model": "gemini-2.5-flash",
+                "base_url": "", "note": "نیازمند API Key رایگان Google AI Studio",
+            },
+            {
+                "id": "gemini-flash-lite",
+                "name": "Google Gemini 2.5 Flash-Lite (سهمیه رایگان در صورت دسترسی)",
+                "provider": "gemini", "model": "gemini-2.5-flash-lite",
+                "base_url": "", "note": "نیازمند API Key رایگان Google AI Studio",
+            },
+            {
+                "id": "openrouter-free",
+                "name": "OpenRouter Free Router",
+                "provider": "custom", "model": "openrouter/free",
+                "base_url": "https://openrouter.ai/api/v1",
+                "note": "نیازمند API Key رایگان OpenRouter؛ انتخاب خودکار مدل‌های رایگان",
+            },
+            {
+                "id": "openrouter-llama-free",
+                "name": "Llama 3.3 8B via OpenRouter (Free)",
+                "provider": "custom", "model": "meta-llama/llama-3.3-8b-instruct:free",
+                "base_url": "https://openrouter.ai/api/v1",
+                "note": "نیازمند API Key OpenRouter و وابسته به سهمیه مدل",
+            },
+            {
+                "id": "ollama-local",
+                "name": "Ollama Local — بدون هزینه سرویس",
+                "provider": "custom", "model": "llama3.2",
+                "base_url": "http://localhost:11434/v1",
+                "note": "نیازمند نصب و اجرای Ollama روی همین رایانه",
+            },
+        ]
+
     def save_ai_settings(self, payload: dict) -> dict:
         s = self.ai_settings
         s.provider = payload.get("provider", s.provider)
