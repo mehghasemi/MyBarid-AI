@@ -51,7 +51,10 @@ def analyze_case(
         try:
             cached = db.get_ai_cache(sig)
             if cached:
-                return _payload_to_scores(cached, criteria_ids), None
+                cached_scores = _payload_to_scores(cached, criteria_ids)
+                if cached_scores:
+                    return cached_scores, None
+                # Cache قدیمی/ناقص نباید به‌عنوان تحلیل موفق تلقی شود.
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             # A corrupt/old cache entry must not abort the whole dataset.
             last_error = f"Cache پاسخ AI قابل استفاده نبود؛ درخواست جدید ارسال شد: {exc}"
@@ -90,7 +93,7 @@ def analyze_case(
         try:
             scores = _payload_to_scores(payload, criteria_ids)
             if not scores:
-                last_error = "پاسخ AI برای هیچ‌یک از معیارهای فعال، امتیاز معتبر برنگرداند."
+                last_error = "پاسخ سرویس AI برای هیچ‌یک از معیارهای فعال امتیاز معتبر برنگرداند."
                 continue
             if use_cache:
                 db.set_ai_cache(sig, payload)

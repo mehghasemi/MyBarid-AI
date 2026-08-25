@@ -801,6 +801,11 @@ class Api:
                 if "criteria" in message.casefold() or "keyerror" in message.casefold():
                     message = "پاسخ سرویس AI ساختار معتبر نداشت و قابل استفاده نبود. اتصال، مدل و قالب پاسخ JSON را بررسی کنید."
                 raise RuntimeError(message)
+            if not scores:
+                raise RuntimeError(
+                    "سرویس AI پاسخ قابل استفاده‌ای برای معیارهای این کیس برنگرداند. "
+                    "لطفاً اتصال، مدل و قالب پاسخ JSON را بررسی کنید."
+                )
             breakdown = score_case(case, config, scores)
             with self._lock:
                 if self.result:
