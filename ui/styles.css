@@ -57,7 +57,7 @@ html, body {
   flex-direction: column;
   flex-shrink: 0;
   padding: 18px 0;
-  overflow-y: auto;
+  overflow: hidden;
 }
 #sidebar .brand {
   padding: 0 18px 18px 18px;
