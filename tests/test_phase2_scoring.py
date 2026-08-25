@@ -13,6 +13,7 @@ def _note(**overrides):
         case_number="C-1", case_title="دسترسی", customer=None, owner="A",
         service=None, case_status="Resolved", case_status_reason=None,
         case_created_on=datetime(2026, 1, 1, 9), note_date=datetime(2026, 1, 1, 10),
+        case_created_by="A",
         note_author="A", assign_to=None, incident_type=None, case_description=None,
         scenario=None,
     )

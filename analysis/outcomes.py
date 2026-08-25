@@ -24,6 +24,16 @@ def classify_case_outcome(case: CaseBundle) -> CaseOutcome:
     lifecycle_key = lifecycle.casefold() if lifecycle else ""
     lifecycle_value = lifecycle.title() if lifecycle_key in LIFECYCLE_STATUSES else lifecycle
 
+    if not lifecycle:
+        return CaseOutcome(
+            lifecycle_status=None,
+            outcome_status=None,
+            evidence=[],
+            confidence="low",
+            coverage=0.0,
+            na_reason="Lifecycle برای تعیین نتیجه واقعی وجود ندارد.",
+        )
+
     texts = [
         *(n.description or "" for n in case.notes),
         *(t.description or "" for t in case.tasks),
