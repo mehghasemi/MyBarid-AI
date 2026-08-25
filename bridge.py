@@ -378,6 +378,17 @@ class Api:
         save_criteria_config(self.config, USER_CONFIG_PATH)
         return {"ok": True}
 
+    def update_evaluation_profile(self, profile_id: str, service_values: list[str],
+                                  keywords: list[str], criteria_ids: list[str]) -> dict:
+        profile = next((p for p in self.config.evaluation_profiles if p.id == profile_id), None)
+        if not profile:
+            return {"ok": False, "error": "پروفایل ارزیابی پیدا نشد."}
+        profile.service_values = [str(v).strip() for v in service_values if str(v).strip()]
+        profile.keywords = [str(v).strip() for v in keywords if str(v).strip()]
+        profile.criteria_ids = [str(v) for v in criteria_ids]
+        save_criteria_config(self.config, USER_CONFIG_PATH)
+        return {"ok": True}
+
     def reset_criteria(self) -> dict:
         self.config = load_criteria_config()
         if USER_CONFIG_PATH.exists():

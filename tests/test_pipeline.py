@@ -151,6 +151,25 @@ def test_suspicious_reason_normalization_removes_variable_day_count():
     assert normalize_reason(first) == normalize_reason(second)
 
 
+def test_service_profile_marks_unrelated_criteria_as_na():
+    notes = [make_note(service="راهنمایی", description="راهنمای استفاده از سامانه ارائه شد.")]
+    cases, _ = build_cases(notes, [])
+    breakdown = score_case(cases["CAS-1"], load_criteria_config())
+    by_id = {item.criterion_id: item for item in breakdown.criterion_scores}
+    assert by_id["solution_appropriateness"].score is None
+    assert "مرتبط نیست" in (by_id["solution_appropriateness"].na_reason or "")
+    assert by_id["problem_understanding"].score is None or by_id["problem_understanding"].score is not None
+
+
+def test_unknown_service_keeps_default_criteria_set():
+    notes = [make_note(service="سرویس ناشناخته", description="بررسی انجام شد.")]
+    cases, _ = build_cases(notes, [])
+    breakdown = score_case(cases["CAS-1"], load_criteria_config())
+    assert len(breakdown.criterion_scores) == sum(
+        1 for _, criterion in load_criteria_config().active_criteria(unit="case")
+    )
+
+
 # ------------------------------------------------------------ Experts ---
 
 def test_primary_expert_ignores_portal():

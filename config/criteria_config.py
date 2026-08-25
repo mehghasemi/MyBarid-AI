@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 DEFAULT_PATH = Path(__file__).parent / "v2_criteria.json"
@@ -38,10 +38,61 @@ class Category:
 
 
 @dataclass
+class EvaluationProfile:
+    id: str
+    name_fa: str
+    service_values: list[str]
+    keywords: list[str]
+    criteria_ids: list[str]
+
+
+DEFAULT_EVALUATION_PROFILES = [
+    EvaluationProfile(
+        id="guidance",
+        name_fa="راهنمایی و آموزش",
+        service_values=["راهنمایی", "آموزش", "اطلاعات", "guidance", "how-to"],
+        keywords=["راهنمایی", "آموزش", "نحوه", "how to", "راهنما"],
+        criteria_ids=[
+            "problem_understanding", "customer_interaction_quality",
+            "conclusion_adequacy", "final_status_clear",
+            "first_response_time", "notes_completeness", "notes_result_recorded",
+        ],
+    ),
+    EvaluationProfile(
+        id="incident",
+        name_fa="رفع مشکل",
+        service_values=["رفع مشکل", "incident", "problem", "break-fix"],
+        keywords=["رفع مشکل", "خرابی", "قطعی", "خطا", "incident", "problem"],
+        criteria_ids=[
+            "problem_understanding", "solution_appropriateness",
+            "customer_interaction_quality", "conclusion_adequacy",
+            "final_status_clear", "first_response_time",
+            "notes_completeness", "notes_result_recorded",
+            "timeline_reconstructable",
+        ],
+    ),
+    EvaluationProfile(
+        id="request",
+        name_fa="درخواست خدمت یا تغییر",
+        service_values=["درخواست", "تغییر", "دسترسی", "request", "change"],
+        keywords=["درخواست", "تغییر", "دسترسی", "request", "change"],
+        criteria_ids=[
+            "problem_understanding", "solution_appropriateness",
+            "customer_interaction_quality", "conclusion_adequacy",
+            "final_status_clear", "first_response_time",
+            "task_presence_when_needed", "task_case_relation",
+            "notes_completeness", "notes_result_recorded",
+        ],
+    ),
+]
+
+
+@dataclass
 class CriteriaConfig:
     objective_ai_ratio: dict
     categories: list[Category]
     data_health_checks: list[dict]
+    evaluation_profiles: list[EvaluationProfile] = field(default_factory=list)
 
     def active_criteria(self, unit: str | None = None):
         for cat in self.categories:
@@ -74,6 +125,30 @@ class CriteriaConfig:
                     return criterion
         return None
 
+    def match_profile(self, case) -> EvaluationProfile | None:
+        service = (getattr(case, "service", None) or "").strip().casefold()
+        text = " ".join(filter(None, [
+            getattr(case, "service", None),
+            getattr(case, "case_title", None),
+            getattr(case, "scenario", None),
+            getattr(case, "case_description", None),
+            getattr(case, "status_reason", None),
+        ])).casefold()
+        for profile in self.evaluation_profiles:
+            if any(value.casefold() == service for value in profile.service_values if value):
+                return profile
+        for profile in self.evaluation_profiles:
+            if any(keyword.casefold() in text for keyword in profile.keywords if keyword):
+                return profile
+        return None
+
+    def criteria_for_case(self, case, unit: str | None = None):
+        profile = self.match_profile(case)
+        allowed = set(profile.criteria_ids) if profile else None
+        for category, criterion in self.active_criteria(unit=unit):
+            if allowed is None or criterion.id in allowed:
+                yield category, criterion
+
     def to_dict(self) -> dict:
         return {
             "objective_ai_ratio": self.objective_ai_ratio,
@@ -88,6 +163,15 @@ class CriteriaConfig:
                 for category in self.categories
             ],
             "data_health_checks": self.data_health_checks,
+            "evaluation_profiles": [
+                {
+                    "id": profile.id, "name_fa": profile.name_fa,
+                    "service_values": profile.service_values,
+                    "keywords": profile.keywords,
+                    "criteria_ids": profile.criteria_ids,
+                }
+                for profile in self.evaluation_profiles
+            ],
         }
 
 
@@ -126,10 +210,20 @@ def load_criteria_config(path: str | Path | None = None) -> CriteriaConfig:
         )
         for category in raw["categories"]
     ]
+    profiles = [
+        EvaluationProfile(
+            id=item["id"], name_fa=item["name_fa"],
+            service_values=item.get("service_values", []),
+            keywords=item.get("keywords", []),
+            criteria_ids=item.get("criteria_ids", []),
+        )
+        for item in raw.get("evaluation_profiles", [])
+    ] or DEFAULT_EVALUATION_PROFILES
     return CriteriaConfig(
         objective_ai_ratio=raw["objective_ai_ratio"],
         categories=categories,
         data_health_checks=raw["data_health_checks"],
+        evaluation_profiles=profiles,
     )
 
 

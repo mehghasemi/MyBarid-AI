@@ -404,6 +404,51 @@ async function loadCriteria() {
   document.getElementById('ratio-objective').value = cfg.objective_ai_ratio.objective;
   document.getElementById('ratio-ai').value = cfg.objective_ai_ratio.ai;
   renderCriteria();
+  renderEvaluationProfiles();
+}
+
+function allCriteria() {
+  return (state.criteriaConfig?.categories || []).flatMap(cat => cat.criteria || []);
+}
+
+function renderEvaluationProfiles() {
+  const box = document.getElementById('evaluation-profiles-list');
+  if (!box) return;
+  const criteria = allCriteria();
+  box.innerHTML = (state.criteriaConfig.evaluation_profiles || []).map(profile => `
+    <div class="card" style="margin-top:10px;padding:12px">
+      <h4 style="margin:0 0 8px">${escapeHtml(profile.name_fa)}</h4>
+      <input type="hidden" data-profile-id="${escapeHtml(profile.id)}">
+      <div class="field">
+        <label class="field-label">مقادیر دقیق Service (با کاما جدا کنید)</label>
+        <input type="text" id="profile-services-${profile.id}" value="${escapeHtml((profile.service_values || []).join(', '))}">
+      </div>
+      <div class="field">
+        <label class="field-label">کلمات تشخیصی در عنوان/شرح (با کاما جدا کنید)</label>
+        <input type="text" id="profile-keywords-${profile.id}" value="${escapeHtml((profile.keywords || []).join(', '))}">
+      </div>
+      <div class="field">
+        <label class="field-label">معیارهای فعال این پروفایل</label>
+        <div class="chip-list">${criteria.map(c => `
+          <label class="crit-chip ${profile.criteria_ids.includes(c.id) ? '' : 'crit-chip-inactive'}">
+            <input type="checkbox" id="profile-${profile.id}-${c.id}" ${profile.criteria_ids.includes(c.id) ? 'checked' : ''}>
+            ${escapeHtml(c.name_fa)}
+          </label>`).join('')}</div>
+      </div>
+      <button class="btn primary" onclick="saveEvaluationProfile('${escapeHtml(profile.id)}')">ذخیره پروفایل</button>
+    </div>
+  `).join('');
+}
+
+async function saveEvaluationProfile(profileId) {
+  const profile = (state.criteriaConfig.evaluation_profiles || []).find(p => p.id === profileId);
+  if (!profile) return;
+  const services = document.getElementById(`profile-services-${profileId}`).value.split(',');
+  const keywords = document.getElementById(`profile-keywords-${profileId}`).value.split(',');
+  const criteriaIds = allCriteria().filter(c => document.getElementById(`profile-${profileId}-${c.id}`)?.checked).map(c => c.id);
+  const res = await api().update_evaluation_profile(profileId, services, keywords, criteriaIds);
+  if (res.ok) { toast('پروفایل ارزیابی ذخیره شد', 'success'); loadCriteria(); }
+  else toast(res.error || 'ذخیره پروفایل ناموفق بود', 'error');
 }
 
 function renderCriteria() {

@@ -84,8 +84,27 @@ def score_case(
     category_pairs: dict[str, list[tuple[float, float]]] = {}
     objective_pairs: list[tuple[float, float]] = []
     ai_pairs: list[tuple[float, float]] = []
+    profile = config.match_profile(case)
+    allowed_criteria = set(profile.criteria_ids) if profile else None
+    applicable_weight = 0.0
 
     for category, criterion in config.active_criteria(unit=unit):
+        if allowed_criteria is not None and criterion.id not in allowed_criteria:
+            criterion_scores.append(CriterionScore(
+                criterion_id=criterion.id,
+                name_fa=criterion.name_fa,
+                category_id=category.id,
+                category_name_fa=category.name_fa,
+                evaluation_type=criterion.evaluation_type,
+                score=None,
+                evidence="",
+                weight=criterion.weight,
+                coverage=0.0,
+                confidence="low",
+                na_reason=f"برای پروفایل «{profile.name_fa}» این معیار مرتبط نیست.",
+            ))
+            continue
+        applicable_weight += criterion.weight
         score: float | None = None
         evidence = ""
         na_reason: str | None = None
@@ -160,7 +179,7 @@ def score_case(
     else:
         final_score = ai_score
 
-    active_weight = sum(c.weight for _, c in config.active_criteria(unit=unit))
+    active_weight = applicable_weight or sum(c.weight for _, c in config.active_criteria(unit=unit))
     eligible_weight = sum(c.weight for c in criterion_scores if c.score is not None)
     coverage = eligible_weight / active_weight if active_weight else 0.0
 
