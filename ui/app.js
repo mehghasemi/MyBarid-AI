@@ -7,6 +7,9 @@ const state = {
   datasetLoaded: false,
   dateBounds: null,
   analysisDone: false,
+  analysisMode: 'comparison',
+  casesStatusReasons: [],
+  suspiciousReasons: [],
   casesPage: 0,
   casesPageSize: 25,
   charts: {},
@@ -20,13 +23,13 @@ function api() { return window.pywebview.api; }
    ناوبری
 ------------------------------------------------------------------------ */
 document.querySelectorAll('.nav-item').forEach(el => {
-  const analysisPages = new Set(['dashboard', 'comparison', 'ranking', 'cases', 'suspicious', 'data-quality', 'mgmt-report', 'export']);
+  const analysisPages = new Set(['dashboard', 'general', 'comparison', 'ranking', 'cases', 'suspicious', 'data-quality', 'mgmt-report', 'export']);
   if (analysisPages.has(el.dataset.page)) el.classList.add('analysis-nav');
   el.addEventListener('click', () => showPage(el.dataset.page));
 });
 
 function showPage(name) {
-  const analysisPages = new Set(['dashboard', 'comparison', 'ranking', 'cases', 'suspicious', 'data-quality', 'mgmt-report', 'export']);
+  const analysisPages = new Set(['dashboard', 'general', 'comparison', 'ranking', 'cases', 'suspicious', 'data-quality', 'mgmt-report', 'export']);
   if (analysisPages.has(name) && !state.analysisDone) {
     toast('ابتدا بازه را انتخاب و تحلیل را اجرا کنید.', 'error');
     return;
@@ -40,6 +43,7 @@ function applyNavigationLabels() {
     upload: '📂 بارگذاری داده‌ها',
     periods: '🗓 بازه‌ها و اجرای تحلیل',
     dashboard: '📊 داشبورد',
+    general: '🔎 تحلیل کلی',
     comparison: '🔁 مقایسه دوره‌ها',
     ranking: '🏆 عملکرد کارشناسان',
     cases: '🗂 جزئیات موارد / Taskها',
@@ -294,21 +298,34 @@ async function clearDataset() {
 ------------------------------------------------------------------------ */
 async function runAnalysis() {
   if (!state.datasetLoaded) { toast('ابتدا فایل‌ها را بارگذاری کنید', 'error'); return; }
-  const p1s = getJalaliPickerISO('p1-start-picker'), p1e = getJalaliPickerISO('p1-end-picker');
-  const p2s = getJalaliPickerISO('p2-start-picker'), p2e = getJalaliPickerISO('p2-end-picker');
+  const mode = document.getElementById('analysis-mode').value;
+  const p1s = mode === 'comparison' ? getJalaliPickerISO('p1-start-picker') : '';
+  const p1e = mode === 'comparison' ? getJalaliPickerISO('p1-end-picker') : '';
+  const p2s = mode === 'comparison' ? getJalaliPickerISO('p2-start-picker') : '';
+  const p2e = mode === 'comparison' ? getJalaliPickerISO('p2-end-picker') : '';
   const expertGroup = document.getElementById('run-expert-group').value || null;
 
+  state.analysisMode = mode;
+  state.analysisDone = false;
   document.getElementById('btn-run').disabled = true;
   document.getElementById('progress-area').style.display = 'block';
   document.getElementById('run-result').innerHTML = '';
 
-  const res = await api().start_analysis(p1s, p1e, p2s, p2e, expertGroup);
+  const res = await api().start_analysis(p1s, p1e, p2s, p2e, expertGroup, mode);
   if (!res.ok) {
     toast(res.error, 'error');
     document.getElementById('btn-run').disabled = false;
     return;
   }
   pollStatus();
+}
+
+function toggleAnalysisMode() {
+  const general = document.getElementById('analysis-mode').value === 'general';
+  ['p1-start-picker', 'p1-end-picker', 'p2-start-picker', 'p2-end-picker'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.closest('.card')) el.closest('.card').style.display = general ? 'none' : '';
+  });
 }
 
 async function pollStatus() {
@@ -367,7 +384,7 @@ function closeChangelog() {
 
 async function refreshAllReports() {
   await Promise.all([
-    loadDashboard(), loadComparison(), loadRanking(), loadSuspicious(),
+    loadDashboard(), loadGeneral(), loadComparison(), loadRanking(), loadSuspicious(),
     loadDataQuality(), loadMgmtReport(), loadCasesTable(0),
   ]);
 }
@@ -571,6 +588,17 @@ async function loadDashboard() {
       `<div class="delta ${d.improvement_pct > 0 ? 'up' : (d.improvement_pct < 0 ? 'down' : 'flat')}">${d.improvement_pct > 0 ? '▲' : (d.improvement_pct < 0 ? '▼' : '—')}</div>`),
   ].join('');
 
+  if (d.mode === 'general') {
+    drawChart('chart-categories', 'bar', {
+      labels: d.category_chart.map(c => c.name),
+      datasets: [{ label: 'تحلیل کلی', data: d.category_chart.map(c => c.value), backgroundColor: '#1f4e78' }],
+    });
+    drawChart('chart-overall', 'line', {
+      labels: ['تحلیل کلی'],
+      datasets: [{ label: 'امتیاز کلی', data: [d.general_score], borderColor: '#2f80ed', backgroundColor: '#eaf1f8', fill: true }],
+    });
+    return;
+  }
   drawChart('chart-categories', 'bar', {
     labels: d.category_chart.map(c => c.name),
     datasets: [
@@ -583,6 +611,18 @@ async function loadDashboard() {
     labels: ['دوره اول', 'دوره دوم'],
     datasets: [{ label: 'امتیاز کلی', data: [d.period1_score, d.period2_score], borderColor: '#2f80ed', backgroundColor: '#eaf1f8', fill: true, tension: 0.3 }],
   });
+}
+
+async function loadGeneral() {
+  const d = await api().get_dashboard();
+  if (!d.ok || d.mode !== 'general') return;
+  document.getElementById('general-empty').style.display = 'none';
+  document.getElementById('general-content').style.display = 'block';
+  document.getElementById('general-score').textContent = fmt(d.general_score);
+  document.getElementById('general-count').textContent = d.total_cases;
+  document.getElementById('general-health').textContent = fmt(d.data_quality) + '%';
+  document.getElementById('general-categories').innerHTML = d.category_chart
+    .map(c => `<span class="chip">${escapeHtml(c.name)}: ${fmt(c.value)}</span>`).join('');
 }
 
 function drawChart(canvasId, type, data) {
@@ -603,7 +643,11 @@ function drawChart(canvasId, type, data) {
 ------------------------------------------------------------------------ */
 async function loadComparison() {
   const c = await api().get_comparison();
-  if (!c.ok) return;
+  if (!c.ok) {
+    document.getElementById('comparison-empty').style.display = 'block';
+    document.getElementById('comparison-content').style.display = 'none';
+    return;
+  }
   document.getElementById('comparison-empty').style.display = 'none';
   document.getElementById('comparison-content').style.display = 'block';
   document.getElementById('comparison-narrative').innerHTML = `<h3>تحلیل علت تغییر</h3><p>${c.narrative}</p>`;
@@ -627,9 +671,10 @@ async function loadRanking() {
   document.getElementById('ranking-content').style.display = 'block';
   document.getElementById('ranking-body').innerHTML = r.rows.map(row => `
     <tr class="clickable" onclick="showExpertDetail('${row.expert.replace(/'/g, "\\'")}')">
-      <td>${row.expert}</td><td>${fmt(row.period1_score)}</td><td>${fmt(row.period2_score)}</td>
-      <td>${deltaBadge(row.change)}</td><td><span class="badge ${statusBadgeClass(row.status)}">${row.status}</span></td>
-      <td>${row.period2_cases}</td>
+      <td>${row.expert}</td><td>${fmt(row.score !== undefined ? row.score : row.period1_score)}</td>
+      <td>${fmt(row.period2_score)}</td><td>${deltaBadge(row.change)}</td>
+      <td><span class="badge ${statusBadgeClass(row.status)}">${row.status}</span></td>
+      <td>${row.cases !== undefined ? row.cases : row.period2_cases}</td>
     </tr>`).join('');
 }
 
@@ -678,7 +723,9 @@ async function showExpertDetail(expert) {
       </div>`;
   };
 
-  document.getElementById('expert-detail-stats').innerHTML = statCard('دوره اول', d.period1) + statCard('دوره دوم', d.period2);
+  document.getElementById('expert-detail-stats').innerHTML = d.general
+    ? statCard('تحلیل کلی', d.general)
+    : statCard('دوره اول', d.period1) + statCard('دوره دوم', d.period2);
 
   const fbBox = document.getElementById('expert-feedback-box');
   if (d.feedback && (d.feedback.strengths.length || d.feedback.weaknesses.length)) {
@@ -899,10 +946,9 @@ async function importSettings() {
 ------------------------------------------------------------------------ */
 async function loadCasesTable(page) {
   state.casesPage = page;
-  const period = document.getElementById('cases-period').value;
+  const period = state.analysisMode === 'general' ? 'general' : document.getElementById('cases-period').value;
   const expertFilter = document.getElementById('cases-expert-filter').value || null;
-  const statusSelect = document.getElementById('cases-status-filter');
-  const statusFilter = Array.from(statusSelect.selectedOptions).map(o => o.value).filter(Boolean);
+  const statusFilter = state.casesStatusReasons.slice();
   const numberQuery = document.getElementById('cases-number-search').value.trim() || null;
   const res = await api().get_cases_table(period, page, state.casesPageSize, expertFilter,
     statusFilter.length ? statusFilter : null, numberQuery);
@@ -912,7 +958,12 @@ async function loadCasesTable(page) {
 
   // پر کردن گزینه‌های فیلتر (فقط اگر قبلاً پر نشده یا دوره عوض شده)
   fillFilterOptions('cases-expert-filter', res.experts, expertFilter);
-  fillMultiFilterOptions('cases-status-filter', res.status_reasons, statusFilter);
+  state.casesStatusReasons = state.casesStatusReasons.filter(v => (res.status_reasons || []).includes(v));
+  renderMultiFilterOptions('cases-status-options', res.status_reasons, state.casesStatusReasons, values => {
+    state.casesStatusReasons = values;
+    updateMultiFilterButton('cases-status-filter-wrap', values, 'انتخاب وضعیت‌ها');
+    loadCasesTable(0);
+  });
 
   const isTask = res.unit === 'task';
   document.getElementById('cases-table-head').innerHTML = isTask
@@ -941,24 +992,26 @@ function fillFilterOptions(selectId, options, currentValue) {
   select.value = currentValue || '';
 }
 
-function fillMultiFilterOptions(selectId, options, currentValues) {
-  const select = document.getElementById(selectId);
-  const existing = Array.from(select.options).map(o => o.value).sort().join(',');
-  const incoming = (options || []).slice().sort().join(',');
-  if (existing !== incoming) {
-    select.innerHTML = (options || []).map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
-  }
+function renderMultiFilterOptions(containerId, options, currentValues, onChange) {
+  const container = document.getElementById(containerId);
   const set = new Set(currentValues || []);
-  Array.from(select.options).forEach(o => { o.selected = set.has(o.value); });
+  container.innerHTML = (options || []).map(value => `
+    <label class="multi-filter-option"><input type="checkbox" value="${escapeHtml(value)}" ${set.has(value) ? 'checked' : ''}>${escapeHtml(value)}</label>
+  `).join('') || '<span style="color:var(--muted);font-size:12px">موردی موجود نیست</span>';
+  container.querySelectorAll('input').forEach(input => input.addEventListener('change', () => {
+    onChange(Array.from(container.querySelectorAll('input:checked')).map(x => x.value));
+  }));
 }
 
-function expandMultiSelect(e) {
-  e.target.classList.add('expanded');
-  e.target.size = Math.min(8, Math.max(4, e.target.options.length));
+function toggleMultiFilter(id) { document.getElementById(id).classList.toggle('open'); }
+function updateMultiFilterButton(id, values, emptyLabel) {
+  const btn = document.querySelector(`#${id} .multi-filter-button`);
+  if (btn) btn.textContent = values.length ? `${values.length} انتخاب شده` : emptyLabel;
 }
-function collapseMultiSelect(e) {
-  e.target.classList.remove('expanded');
-  e.target.size = 1;
+function clearCasesStatusFilter() {
+  state.casesStatusReasons = [];
+  updateMultiFilterButton('cases-status-filter-wrap', [], 'انتخاب وضعیت‌ها');
+  loadCasesTable(0);
 }
 
 let casesSearchTimer = null;
@@ -1045,7 +1098,8 @@ function escapeHtml(text) {
    Suspicious
 ------------------------------------------------------------------------ */
 async function loadSuspicious() {
-  const r = await api().get_suspicious();
+  const expert = document.getElementById('suspicious-expert-filter')?.value || null;
+  const r = await api().get_suspicious(expert, state.suspiciousReasons.length ? state.suspiciousReasons : null);
   if (!r.ok) return;
   const badge = document.getElementById('suspicious-badge');
   if (badge) {
@@ -1054,12 +1108,24 @@ async function loadSuspicious() {
   }
   document.getElementById('suspicious-empty').style.display = 'none';
   document.getElementById('suspicious-content').style.display = 'block';
+  fillFilterOptions('suspicious-expert-filter', r.experts || [], expert);
+  renderMultiFilterOptions('suspicious-reason-options', r.reasons || [], state.suspiciousReasons, values => {
+    state.suspiciousReasons = values;
+    updateMultiFilterButton('suspicious-reason-filter-wrap', values, 'انتخاب دلایل');
+    loadSuspicious();
+  });
   document.getElementById('suspicious-body').innerHTML = r.rows.map(row => `
     <tr class="clickable" data-case-number="${escapeHtml(row.case_number || '')}" onclick="openCaseDetail('${row.case_key.replace(/'/g, "\\'")}','all')">
       <td>${row.case_number || '—'}</td><td>${row.case_title || '—'}</td>
       <td><div class="chip-list">${row.reasons.map(rs => `<span class="chip">${rs}</span>`).join('')}</div></td>
     </tr>`).join('');
   filterSuspiciousTable();
+}
+
+function clearSuspiciousReasonFilter() {
+  state.suspiciousReasons = [];
+  updateMultiFilterButton('suspicious-reason-filter-wrap', [], 'انتخاب دلایل');
+  loadSuspicious();
 }
 
 /* ------------------------------------------------------------------------

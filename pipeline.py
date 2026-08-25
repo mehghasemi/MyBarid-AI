@@ -147,6 +147,7 @@ def run_full_analysis(
     suspicious = find_suspicious_cases(suspicious_pool)
 
     return {
+        "mode": "comparison",
         "period1": r1,
         "period2": r2,
         "comparison": comparison,
@@ -157,4 +158,73 @@ def run_full_analysis(
         "data_health_index": health_index,
         "suspicious": suspicious,
         "unit": unit,
+    }
+
+
+def run_general_analysis(
+    dataset: Dataset, config: CriteriaConfig, ai_settings: AISettings,
+    progress_cb: Callable[[str, int, int], None] | None = None,
+    expert_filter: set[str] | None = None, unit: str = "case",
+) -> dict:
+    """Analyze the current dataset as one independent population."""
+    def progress(i, n, key):
+        if progress_cb:
+            progress_cb("تحلیل کلی", i, n)
+
+    if unit == "task":
+        tasks = dataset.tasks
+        if expert_filter:
+            tasks = [t for t in tasks if (t.created_by or "") in expert_filter]
+        cases = build_task_pseudo_cases(tasks)
+    else:
+        cases = dict(dataset.cases)
+        if expert_filter:
+            cases = {k: v for k, v in cases.items() if primary_expert(v) in expert_filter}
+    ai_results, ai_errors = ({}, {}) if unit == "task" else analyze_cases(
+        cases, config, ai_settings, progress
+    )
+    scores = score_all(cases, config, ai_results, unit=unit)
+    general = PeriodResult(cases=cases, scores=scores, ai_errors=ai_errors)
+
+    def avg(values):
+        values = [v for v in values if v is not None]
+        return round(sum(values) / len(values), 1) if values else None
+
+    categories = [
+        {"id": cat.id, "name_fa": cat.name_fa,
+         "value": avg([b.category_scores.get(cat.id) for b in scores.values()])}
+        for cat in config.categories
+    ]
+    criteria = [
+        {"id": crit.id, "name_fa": crit.name_fa,
+         "value": avg([cs.score for b in scores.values() for cs in b.criterion_scores
+                       if cs.criterion_id == crit.id])}
+        for _, crit in config.active_criteria()
+    ]
+    overall = avg([b.final_score for b in scores.values()])
+    experts = aggregate_experts(cases, scores)
+    ranking = [{
+        "expert": expert, "score": stats.avg_final, "cases": stats.case_count,
+        "status": "تحلیل کلی",
+    } for expert, stats in experts.items()]
+    ranking.sort(key=lambda row: (row["score"] is None, -(row["score"] or 0)))
+    health_checks, health_index = compute_data_health(
+        dataset.notes, dataset.tasks, dataset.cases, dataset.unmatched_tasks
+    )
+    suspicious_pool = (
+        build_task_pseudo_cases([
+            t for t in dataset.tasks
+            if not expert_filter or (t.created_by or "") in expert_filter
+        ]) if unit == "task" else cases
+    )
+    return {
+        "mode": "general", "general": general, "general_score": overall,
+        "general_categories": categories, "general_criteria": criteria,
+        "general_narrative": (
+            f"امتیاز کلی برای {len(cases)} مورد: "
+            f"{overall if overall is not None else 'قابل محاسبه نیست'}."
+        ),
+        "experts_general": experts, "ranking": ranking,
+        "data_health_checks": health_checks, "data_health_index": health_index,
+        "suspicious": find_suspicious_cases(suspicious_pool), "unit": unit,
     }

@@ -132,12 +132,20 @@ def notes_writing_quality(case: CaseBundle) -> RuleResult:
 # ---------------------------------------------------------------- Tasks ----
 
 def task_presence_when_needed(case: CaseBundle) -> RuleResult:
-    staff_notes = _staff_notes(case)
-    if len(staff_notes) < 2:
-        return RuleResult(None, "حجم فعالیت روی Case برای الزام Task کافی نیست.")
+    # A Task is required only when the source explicitly indicates an L2
+    # hand-off. Note count, or task absence itself, is not evidence.
+    explicit_text = " ".join(filter(None, [
+        case.scenario, case.case_description, case.status_reason, _staff_text(case),
+    ])).casefold()
+    l2_markers = (
+        "l2", "level 2", "second level", "tier 2",
+        "لایه دو", "لایه ۲", "سطح دو", "سطح ۲", "ارجاع به لایه",
+    )
+    if not any(marker.casefold() in explicit_text for marker in l2_markers):
+        return RuleResult(None, "N/A / Insufficient Evidence: داده معتبر برای الزام ارجاع به لایه دو یا ایجاد Task وجود ندارد.")
     if case.tasks:
-        return RuleResult(100.0, f"{len(case.tasks)} Task برای این Case ثبت شده است.")
-    return RuleResult(30.0, "علی‌رغم چند Note کارشناسی، هیچ Task ثبت نشده است.")
+        return RuleResult(100.0, f"ارجاع به لایه دو در داده ثبت شده و {len(case.tasks)} Task وجود دارد.")
+    return RuleResult(0.0, "ارجاع به لایه دو در داده ثبت شده، اما Task متناظر وجود ندارد.")
 
 
 def task_case_relation(case: CaseBundle) -> RuleResult:

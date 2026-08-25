@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import copy
 import threading
 import traceback
 from dataclasses import asdict
@@ -13,7 +14,7 @@ from config.criteria_config import Category, Criterion, CriteriaConfig, load_cri
 import webview
 from data.loader import ExcelLoadError
 from database import db
-from pipeline import Dataset, run_full_analysis
+from pipeline import Dataset, run_full_analysis, run_general_analysis
 import pipeline as pipeline_mod
 from reports.csv_export import export_csv
 from reports.employee_report_export import export_expert_report_excel as export_expert_report_excel_file
@@ -63,6 +64,7 @@ class Api:
         self.result: dict | None = None
         self.last_periods: tuple | None = None
         self.status = {"running": False, "done": False, "stage": "", "current": 0, "total": 0, "error": None}
+        self._analysis_generation = 0
         self._lock = threading.Lock()
 
     def __dir__(self):
@@ -155,6 +157,10 @@ class Api:
             traceback.print_exc()
             return {"ok": False, "error": f"خطای غیرمنتظره در پردازش فایل: {exc}"}
 
+        with self._lock:
+            self._analysis_generation += 1
+            self.result = None
+            self.status = {"running": False, "done": False, "stage": "", "current": 0, "total": 0, "error": None}
         ns, ts = self.dataset.notes_summary, self.dataset.tasks_summary
         dates = [n.note_date for n in self.dataset.notes if n.note_date] + \
                 [t.created_on for t in self.dataset.tasks if t.created_on]
@@ -169,8 +175,11 @@ class Api:
         }
 
     def clear_dataset(self) -> dict:
-        self.dataset = None
-        self.result = None
+        with self._lock:
+            self._analysis_generation += 1
+            self.dataset = None
+            self.result = None
+            self.status = {"running": False, "done": False, "stage": "", "current": 0, "total": 0, "error": None}
         return {"ok": True}
 
     # -------------------------------------------------------- expert groups
@@ -427,18 +436,21 @@ class Api:
 
     # ------------------------------------------------------------ analysis --
 
-    def start_analysis(self, p1_start: str, p1_end: str, p2_start: str, p2_end: str,
-                        expert_group: str | None = None) -> dict:
+    def start_analysis(self, p1_start: str = "", p1_end: str = "", p2_start: str = "",
+                        p2_end: str = "", expert_group: str | None = None,
+                        mode: str = "comparison") -> dict:
         if not self.dataset:
             return {"ok": False, "error": "ابتدا فایل‌های Notes و Tasks را بارگذاری کنید."}
-        if self.status["running"]:
-            return {"ok": False, "error": "یک تحلیل در حال اجراست."}
-        try:
-            period1 = (_parse_period_bound(p1_start, end=False), _parse_period_bound(p1_end, end=True))
-            period2 = (_parse_period_bound(p2_start, end=False), _parse_period_bound(p2_end, end=True))
-        except ValueError:
-            return {"ok": False, "error": "فرمت تاریخ نامعتبر است."}
-        self.last_periods = (period1, period2)
+        if mode not in {"comparison", "general"}:
+            return {"ok": False, "error": "حالت تحلیل نامعتبر است."}
+        period1 = period2 = None
+        if mode == "comparison":
+            try:
+                period1 = (_parse_period_bound(p1_start, end=False), _parse_period_bound(p1_end, end=True))
+                period2 = (_parse_period_bound(p2_start, end=False), _parse_period_bound(p2_end, end=True))
+            except ValueError:
+                return {"ok": False, "error": "فرمت تاریخ نامعتبر است."}
+            self.last_periods = (period1, period2)
 
         expert_filter = None
         unit = "case"
@@ -452,30 +464,52 @@ class Api:
             expert_filter = set(group_data["experts"])
             unit = group_data.get("review_unit", "case")
 
-        self.status = {"running": True, "done": False, "stage": "شروع", "current": 0, "total": 0, "error": None}
-        thread = threading.Thread(target=self._run_worker, args=(period1, period2, expert_filter, unit), daemon=True)
+        with self._lock:
+            self._analysis_generation += 1
+            generation = self._analysis_generation
+            dataset = self.dataset
+            config = copy.deepcopy(self.config)
+            ai_settings = copy.deepcopy(self.ai_settings)
+            self.result = None
+            self.status = {"running": True, "done": False, "stage": "شروع", "current": 0, "total": 0,
+                           "error": None, "generation": generation, "mode": mode}
+        thread = threading.Thread(
+            target=self._run_worker,
+            args=(dataset, config, ai_settings, period1, period2, expert_filter, unit, mode, generation),
+            daemon=True,
+        )
         thread.start()
-        return {"ok": True}
+        return {"ok": True, "generation": generation, "mode": mode}
 
-    def _run_worker(self, period1, period2, expert_filter=None, unit="case"):
+    def _run_worker(self, dataset, config, ai_settings, period1, period2,
+                    expert_filter=None, unit="case", mode="comparison", generation=0):
         def progress_cb(label, current, total):
-            self.status.update({"stage": label, "current": current, "total": total})
+            with self._lock:
+                if generation != self._analysis_generation:
+                    return
+                self.status.update({"stage": label, "current": current, "total": total})
 
         try:
-            result = run_full_analysis(
-                self.dataset, self.config, period1, period2,
-                self.ai_settings if self.ai_settings.enabled else AISettings(enabled=False),
-                progress_cb, expert_filter, unit,
+            settings = ai_settings if ai_settings.enabled else AISettings(enabled=False)
+            result = (
+                run_general_analysis(dataset, config, settings, progress_cb, expert_filter, unit)
+                if mode == "general" else
+                run_full_analysis(dataset, config, period1, period2, settings, progress_cb, expert_filter, unit)
             )
             with self._lock:
+                if generation != self._analysis_generation:
+                    return
                 self.result = result
-            self.status.update({"running": False, "done": True, "stage": "پایان یافت"})
+                self.status.update({"running": False, "done": True, "stage": "پایان یافت"})
         except Exception as exc:  # noqa: BLE001
             traceback.print_exc()
-            self.status.update({"running": False, "done": False, "error": str(exc)})
+            with self._lock:
+                if generation == self._analysis_generation:
+                    self.status.update({"running": False, "done": False, "error": str(exc)})
 
     def get_status(self) -> dict:
-        return self.status
+        with self._lock:
+            return dict(self.status)
 
     # ------------------------------------------------------------ results --
 
@@ -483,6 +517,23 @@ class Api:
         if not self.result or not self.dataset:
             return {"ok": False}
         r = self.result
+        if r.get("mode") == "general":
+            general = r["general"]
+            return {
+                "ok": True, "mode": "general", "unit": r.get("unit", "case"),
+                "total_cases": len(general.cases), "total_cases_all": len(self.dataset.cases),
+                "total_experts": len(r["experts_general"]),
+                "total_notes": sum(len(c.notes) for c in general.cases.values()),
+                "total_tasks": sum(len(c.tasks) for c in general.cases.values()),
+                "data_quality": r["data_health_index"],
+                "general_score": r["general_score"], "period1_score": None,
+                "period2_score": None, "improvement_pct": None,
+                "category_chart": [
+                    {"name": c["name_fa"], "value": c["value"]}
+                    for c in r["general_categories"]
+                ],
+                "suspicious_count": len(r["suspicious"]),
+            }
         p1, p2 = r["period1"], r["period2"]
         overall = r["comparison"]["overall"]
         analyzed_cases = len(set(p1.cases) | set(p2.cases))
@@ -508,6 +559,8 @@ class Api:
     def get_comparison(self) -> dict:
         if not self.result:
             return {"ok": False}
+        if self.result.get("mode") == "general":
+            return {"ok": False, "mode": "general", "error": "مقایسه دوره‌ها برای تحلیل کلی کاربرد ندارد."}
         comp = self.result["comparison"]
         return {
             "ok": True,
@@ -526,6 +579,32 @@ class Api:
         if not self.result:
             return {"ok": False}
         r = self.result
+        if r.get("mode") == "general":
+            s = r["experts_general"].get(expert)
+            if not s:
+                return {"ok": True, "general": None, "cases": [], "feedback": None}
+            from analysis.experts import build_employee_feedback, primary_expert
+            cases = []
+            for key, case in r["general"].cases.items():
+                if primary_expert(case) == expert:
+                    b = r["general"].scores.get(key)
+                    cases.append({
+                        "case_key": key, "case_number": case.case_number,
+                        "case_title": case.case_title,
+                        "final_score": b.final_score if b else None,
+                    })
+            cases.sort(key=lambda c: (c["final_score"] is None, c["final_score"] or 0))
+            return {
+                "ok": True, "general": {
+                    "case_count": s.case_count, "note_count": s.note_count,
+                    "task_count": s.task_count, "avg_objective": s.avg_objective,
+                    "avg_ai": s.avg_ai, "avg_final": s.avg_final,
+                    "weak_criteria": s.weak_criteria.most_common(5),
+                    "strong_criteria": s.strong_criteria.most_common(5),
+                },
+                "period1": None, "period2": None, "cases": cases[:200],
+                "feedback": build_employee_feedback(s),
+            }
         s1 = r["experts_p1"].get(expert)
         s2 = r["experts_p2"].get(expert)
 
@@ -560,6 +639,12 @@ class Api:
     def _build_full_expert_report(self, expert: str) -> dict:
         from analysis.experts import build_full_employee_report
         r = self.result
+        if r.get("mode") == "general":
+            stats = r["experts_general"].get(expert)
+            return build_full_employee_report(
+                expert, stats, None, r["experts_general"], "تحلیل کلی",
+                unit=r.get("unit", "case"),
+            )
         s1 = r["experts_p1"].get(expert)
         s2 = r["experts_p2"].get(expert)
         s_current, s_previous = (s2, s1) if s2 else (s1, None)
@@ -596,9 +681,13 @@ class Api:
         'period1'، 'period2' یا 'all' (ترکیب هر دو دوره، دوره دوم در صورت
         تداخل کلید ارجحیت دارد چون جدیدتر است) باشد."""
         if period == "all":
+            if self.result.get("mode") == "general":
+                return self.result["general"].cases, self.result["general"].scores
             cases = {**self.result["period1"].cases, **self.result["period2"].cases}
             scores = {**self.result["period1"].scores, **self.result["period2"].scores}
             return cases, scores
+        if period == "general" and self.result.get("mode") == "general":
+            return self.result["general"].cases, self.result["general"].scores
         pr = self.result[period] if period in ("period1", "period2") else self.result["period2"]
         return pr.cases, pr.scores
 
@@ -661,14 +750,33 @@ class Api:
             "unit": self.result.get("unit", "case"),
         }
 
-    def get_suspicious(self) -> dict:
+    def get_suspicious(self, expert_filter: str | None = None,
+                       reason_filter: list[str] | None = None) -> dict:
         if not self.result:
             return {"ok": False}
+        from analysis.experts import primary_expert
+        all_rows = self.result["suspicious"]
+        source_result = self.result.get("general")
+        source_cases = source_result.cases if source_result else (
+            self.dataset.cases if self.dataset else self.result["period2"].cases
+        )
         rows = [
             {"case_key": s.case_key, "case_number": s.case_number, "case_title": s.case_title, "reasons": s.reasons}
-            for s in self.result["suspicious"]
+            for s in all_rows
+            if (not expert_filter or (
+                (source_cases.get(s.case_key)
+                 or (self.dataset.cases.get(s.case_key) if self.dataset else None))
+                and primary_expert(
+                    source_cases.get(s.case_key)
+                    or (self.dataset.cases.get(s.case_key) if self.dataset else None)
+                ) == expert_filter
+            ))
+            and (not reason_filter or any(reason in reason_filter for reason in s.reasons))
         ]
-        return {"ok": True, "rows": rows, "unit": self.result.get("unit", "case")}
+        experts = sorted({primary_expert(c) for c in source_cases.values()})
+        reasons = sorted({reason for s in all_rows for reason in s.reasons})
+        return {"ok": True, "rows": rows, "experts": experts, "reasons": reasons,
+                "unit": self.result.get("unit", "case")}
 
     def get_data_quality(self) -> dict:
         if not self.result:
@@ -684,6 +792,21 @@ class Api:
         if not self.result:
             return {"ok": False}
         r = self.result
+        if r.get("mode") == "general":
+            categories = [c for c in r["general_categories"] if c["value"] is not None]
+            categories.sort(key=lambda c: c["value"])
+            return {
+                "ok": True,
+                "overall_status": r["general_narrative"],
+                "top_strengths": [c["name_fa"] for c in categories if c["value"] >= 75][:5],
+                "top_weaknesses": [
+                    {"name": c["name_fa"], "score": c["value"]}
+                    for c in categories if c["value"] < 75
+                ][:5],
+                "most_improved": [], "most_declined": [],
+                "data_issues": [h.name_fa for h in r["data_health_checks"] if h.healthy_score < 80],
+                "recommendations": [],
+            }
         comp = r["comparison"]
         ranking = r["ranking"]
         improved = [row for row in ranking if row["change"] is not None and row["change"] > 0]
@@ -727,6 +850,52 @@ class Api:
 
     def _build_export_tables(self) -> dict:
         r = self.result
+        if r.get("mode") == "general":
+            general = r["general"]
+            from analysis.experts import primary_expert
+            summary_rows = [
+                ["تعداد کل موارد", len(self.dataset.cases)],
+                ["تعداد Note", len(self.dataset.notes)],
+                ["تعداد Task", len(self.dataset.tasks)],
+                ["شاخص سلامت داده CRM", r["data_health_index"]],
+                ["امتیاز تحلیل کلی", r["general_score"]],
+            ]
+            case_rows = []
+            ai_rows = []
+            for key, case in general.cases.items():
+                b = general.scores.get(key)
+                case_rows.append([
+                    "تحلیل کلی", case.case_number, case.case_title, primary_expert(case),
+                    len(case.notes), len(case.tasks),
+                    b.objective_score if b else None, b.ai_score if b else None,
+                    b.final_score if b else None,
+                ])
+                if b and b.ai_used:
+                    for cs in b.criterion_scores:
+                        if cs.evaluation_type in ("AI", "HYBRID") and cs.score is not None:
+                            ai_rows.append(["تحلیل کلی", case.case_number, cs.name_fa, cs.score, cs.evidence])
+            expert_rows = [
+                [row["expert"], row["score"], row["cases"], row["status"]]
+                for row in r["ranking"]
+            ]
+            category_rows = [[c["name_fa"], c["value"]] for c in r["general_categories"]]
+            criteria_rows = [[c["name_fa"], c["value"]] for c in r["general_criteria"]]
+            dq_rows = [[h.name_fa, h.healthy_score, h.issue_count, h.detail_fa]
+                       for h in r["data_health_checks"]]
+            suspicious_rows = [
+                [s.case_number, s.case_title, " | ".join(s.reasons)]
+                for s in r["suspicious"]
+            ]
+            return {
+                "summary": {"headers": ["شاخص", "مقدار"], "rows": summary_rows},
+                "cases": {"headers": ["حالت", "شماره مورد", "عنوان", "کارشناس", "Note", "Task", "Objective", "AI", "Final"], "rows": case_rows},
+                "experts": {"headers": ["کارشناس", "امتیاز", "موارد", "وضعیت"], "rows": expert_rows},
+                "criteria": {"headers": ["معیار", "امتیاز"], "rows": criteria_rows},
+                "comparison": {"headers": ["دسته", "امتیاز"], "rows": category_rows},
+                "data_quality": {"headers": ["بررسی", "سلامت", "تعداد مشکل", "توضیح"], "rows": dq_rows},
+                "ai_evidence": {"headers": ["حالت", "شماره مورد", "معیار", "امتیاز", "شواهد"], "rows": ai_rows},
+                "suspicious": {"headers": ["شماره مورد", "عنوان", "دلایل"], "rows": suspicious_rows},
+            }
         comp = r["comparison"]
 
         summary_rows = [

@@ -1,12 +1,15 @@
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 from analysis.experts import primary_expert
-from analysis.rules import notes_completeness, notes_result_recorded
+from analysis.rules import notes_completeness, notes_result_recorded, task_presence_when_needed
 from analysis.scoring import score_case
 from config.criteria_config import load_criteria_config
 from data.cleaner import build_cases
 from data.mapper import NOTES_FIELDS, TASKS_FIELDS, detect_mapping
 from data.validator import NoteRecord, TaskRecord
+from ai.providers import AISettings
+from pipeline import Dataset, run_general_analysis
 
 
 def make_note(**kwargs) -> NoteRecord:
@@ -112,6 +115,33 @@ def test_closed_case_with_action_but_without_result_is_flagged():
     result = notes_result_recorded(cases["CAS-1"])
     assert result.score == 20
     assert "result" in result.evidence
+
+
+def test_task_presence_is_na_without_explicit_l2_evidence():
+    notes = [make_note(description="بررسی و اقدام انجام شد.")] * 3
+    cases, _ = build_cases(notes, [])
+    result = task_presence_when_needed(cases["CAS-1"])
+    assert result.score is None
+    assert "Insufficient Evidence" in result.evidence
+
+
+def test_task_presence_requires_task_only_for_explicit_l2_referral():
+    notes = [make_note(case_description="ارجاع به لایه دو پشتیبانی لازم است.")]
+    cases, _ = build_cases(notes, [])
+    result = task_presence_when_needed(cases["CAS-1"])
+    assert result.score == 0
+
+
+def test_general_analysis_is_one_independent_result():
+    notes = [make_note(description="مشکل رفع شد.")]
+    tasks = [make_task()]
+    cases, unmatched = build_cases(notes, tasks)
+    summary = SimpleNamespace()
+    dataset = Dataset(notes, tasks, cases, unmatched, summary, summary)
+    result = run_general_analysis(dataset, load_criteria_config(), AISettings(enabled=False))
+    assert result["mode"] == "general"
+    assert "period1" not in result and "period2" not in result
+    assert set(result["general"].cases) == {"CAS-1"}
 
 
 # ------------------------------------------------------------ Experts ---
