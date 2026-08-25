@@ -23,7 +23,7 @@
           <small>ماژول فعال</small>
         </span>
       </button>
-      <button type="button" class="module-card planned" data-module="project-management" title="این ماژول در دست توسعه است">
+      <button type="button" class="module-card planned" data-module="project-management" title="این ماژول در دست توسعه است" aria-pressed="false">
         <span class="module-icon">📋</span>
         <span class="module-copy">
           <strong>مدیریت پروژه‌ها</strong>
@@ -33,23 +33,29 @@
     </div>
 
     <div class="module-menu-label">منوی ماژول فعال</div>
-    <div class="nav-section-title">تحلیل و گزارش</div>
-    <div class="nav-item" data-page="dashboard">📊 داشبورد مدیریتی</div>
-    <div class="nav-item" data-page="general">🔎 تحلیل کلی</div>
-    <div class="nav-item" data-page="comparison">🔁 مقایسه دو دوره</div>
-    <div class="nav-item" data-page="ranking">🏆 رتبه‌بندی کارشناسان</div>
-    <div class="nav-item" data-page="cases">🗂 تحلیل موارد</div>
-    <div class="nav-item" data-page="suspicious">⚠️ موارد نیازمند بررسی</div>
-    <div class="nav-item" data-page="data-quality">🩺 سلامت داده CRM</div>
-    <div class="nav-item" data-page="mgmt-report">📝 جمع‌بندی مدیریتی</div>
-    <div class="nav-item" data-page="export">⬇️ Export</div>
+    <div class="module-menu active" data-module-menu="crm-quality">
+      <div class="nav-section-title">تحلیل و گزارش</div>
+      <div class="nav-item" data-page="dashboard">📊 داشبورد مدیریتی</div>
+      <div class="nav-item" data-page="general">🔎 تحلیل کلی</div>
+      <div class="nav-item" data-page="comparison">🔁 مقایسه دو دوره</div>
+      <div class="nav-item" data-page="ranking">🏆 رتبه‌بندی کارشناسان</div>
+      <div class="nav-item" data-page="cases">🗂 تحلیل موارد</div>
+      <div class="nav-item" data-page="suspicious">⚠️ موارد نیازمند بررسی</div>
+      <div class="nav-item" data-page="data-quality">🩺 سلامت داده CRM</div>
+      <div class="nav-item" data-page="mgmt-report">📝 جمع‌بندی مدیریتی</div>
+      <div class="nav-item" data-page="export">⬇️ Export</div>
 
-    <div class="nav-section-title">تنظیمات</div>
-    <div class="nav-item active" data-page="upload">📂 بارگذاری فایل‌ها</div>
-    <div class="nav-item" data-page="periods">🗓 بازه‌های زمانی و اجرای تحلیل</div>
-    <div class="nav-item" data-page="expert-groups">👥 گروه‌بندی کارشناسان</div>
-    <div class="nav-item" data-page="criteria">⚖️ معیارها و وزن‌ها</div>
-    <div class="nav-item" data-page="ai-settings">🤖 تنظیمات AI</div>
+      <div class="nav-section-title">تنظیمات</div>
+      <div class="nav-item active" data-page="upload">📂 بارگذاری فایل‌ها</div>
+      <div class="nav-item" data-page="periods">🗓 بازه‌های زمانی و اجرای تحلیل</div>
+      <div class="nav-item" data-page="expert-groups">👥 گروه‌بندی کارشناسان</div>
+      <div class="nav-item" data-page="criteria">⚖️ معیارها و وزن‌ها</div>
+      <div class="nav-item" data-page="ai-settings">🤖 تنظیمات AI</div>
+    </div>
+    <div class="module-menu" data-module-menu="project-management">
+      <div class="nav-section-title">مدیریت پروژه‌ها</div>
+      <div class="module-empty-state">قابلیت‌های مدیریت پروژه‌ها در دست توسعه است.</div>
+    </div>
 
     <div class="spacer"></div>
     <div class="status-pill" id="dataset-status">فایلی بارگذاری نشده است.</div>

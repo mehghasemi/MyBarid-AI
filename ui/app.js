@@ -32,17 +32,23 @@ document.querySelectorAll('.nav-item').forEach(el => {
 
 document.querySelectorAll('.module-card').forEach(el => {
   el.addEventListener('click', () => {
-    // هر ماژول آینده می‌تواند با class="planned" بدون تغییر منطق ناوبری
-    // تا زمان آماده‌شدن قابلیت‌ها در فهرست نمایش داده شود.
-    if (el.classList.contains('planned')) {
-      toast(el.title || 'این ماژول در دست توسعه است.');
-      return;
-    }
-    document.querySelectorAll('.module-card').forEach(card => {
-      card.classList.toggle('active', card === el);
-    });
+    activateModule(el.dataset.module);
   });
 });
+
+function activateModule(moduleName) {
+  document.querySelectorAll('.module-card').forEach(card => {
+    const active = card.dataset.module === moduleName;
+    card.classList.toggle('active', active);
+    card.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  document.querySelectorAll('.module-menu').forEach(menu => {
+    menu.classList.toggle('active', menu.dataset.moduleMenu === moduleName);
+  });
+  if (moduleName === 'project-management') {
+    toast('ماژول مدیریت پروژه‌ها در دست توسعه است.');
+  }
+}
 
 function showPage(name) {
   const analysisPages = new Set(['dashboard', 'general', 'comparison', 'ranking', 'cases', 'suspicious', 'data-quality', 'mgmt-report', 'export']);
