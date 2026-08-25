@@ -21,18 +21,18 @@ reference when available, and confidence. If evidence is missing, contradictory,
 template-like, copied, or too vague, return score=null and a na_reason.
 
 Return JSON only in this shape:
-{
-  "criteria": {
-    "<criterion_id>": {
+{{
+  "criteria": {{
+    "<criterion_id>": {{
       "score": 0-100 or null,
       "evidence": "fact-based explanation",
-      "source_events": [{"event_type": "note|task", "event_id": "...", "event_date": "..."}],
+      "source_events": [{{"event_type": "note|task", "event_id": "...", "event_date": "..."}}],
       "confidence": "low|medium|high",
       "na_reason": "required only when score is null"
-    }
-  },
+    }}
+  }},
   "confidence": "low|medium|high"
-}
+}}
 
 Criteria:
 {criteria_list}

@@ -124,7 +124,9 @@ def is_case_ai_analyzed(
         return False
 
 
-def _payload_to_scores(payload: dict, criteria_ids: list[str]) -> dict[str, tuple[float, str]]:
+def _payload_to_scores(
+    payload: dict, criteria_ids: list[str],
+) -> dict[str, tuple[float | None, str]]:
     if not isinstance(payload, dict):
         return {}
     criteria = payload.get("criteria")
@@ -136,11 +138,15 @@ def _payload_to_scores(payload: dict, criteria_ids: list[str]) -> dict[str, tupl
     result = {}
     for cid in criteria_ids:
         item = criteria.get(cid)
-        if isinstance(item, dict) and isinstance(item.get("score"), (int, float)):
-            result[cid] = (
-                float(item["score"]),
-                _format_evidence(item.get("evidence", ""), item.get("source_events", [])),
+        if isinstance(item, dict):
+            score = item.get("score")
+            evidence_text = _format_evidence(
+                item.get("evidence", ""), item.get("source_events", [])
             )
+            if isinstance(score, (int, float)):
+                result[cid] = (float(score), evidence_text)
+            elif item.get("na_reason"):
+                result[cid] = (None, str(item["na_reason"]))
         elif isinstance(scores.get(cid), (int, float)):
             result[cid] = (float(scores[cid]), str(evidence.get(cid, "")))
     return result

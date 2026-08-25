@@ -48,3 +48,13 @@ def test_malformed_ai_payload_does_not_raise():
 
     assert _payload_to_scores({"criteria": None}, ["diagnosis"]) == {}
     assert _payload_to_scores({}, ["diagnosis"]) == {}
+
+
+def test_valid_na_ai_payload_is_preserved_for_case_breakdown():
+    from ai.analyzer import _payload_to_scores
+
+    result = _payload_to_scores(
+        {"criteria": {"diagnosis": {"score": None, "na_reason": "شواهد کافی وجود ندارد."}}},
+        ["diagnosis"],
+    )
+    assert result == {"diagnosis": (None, "شواهد کافی وجود ندارد.")}

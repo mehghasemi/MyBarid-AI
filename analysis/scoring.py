@@ -74,7 +74,7 @@ def _derive_outcome_status(case: CaseBundle) -> str | None:
 def score_case(
     case: CaseBundle,
     config: CriteriaConfig,
-    ai_scores: dict[str, tuple[float, str]] | None = None,
+    ai_scores: dict[str, tuple[float | None, str]] | None = None,
     unit: str = "case",
 ) -> CaseScoreBreakdown:
     """Score with N/A-aware re-weighting while preserving the legacy API."""
@@ -122,6 +122,8 @@ def score_case(
         elif criterion.evaluation_type == "AI":
             if criterion.id in ai_scores:
                 score, evidence = ai_scores[criterion.id]
+                if score is None:
+                    na_reason = evidence or "AI برای این مورد شواهد کافی ندارد."
             else:
                 na_reason = "AI غیرفعال است یا برای این مورد خروجی معتبر ندارد."
                 evidence = na_reason
@@ -135,7 +137,7 @@ def score_case(
                 score = sum(parts) / len(parts)
                 evidence = ai_evidence or rule_result.evidence
             else:
-                na_reason = "بخش Rule و AI هیچ خروجی قابل اتکایی ندارند."
+                na_reason = ai_evidence or "بخش Rule و AI هیچ خروجی قابل اتکایی ندارند."
                 evidence = na_reason
 
         if score is not None:
