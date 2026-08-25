@@ -69,7 +69,7 @@ class OpenAICompatibleProvider(BaseProvider):
 
 class GeminiProvider(BaseProvider):
     def complete(self, system: str, user: str, settings: AISettings) -> str:
-        model = settings.model or "gemini-1.5-flash"
+        model = settings.model or "gemini-3.6-flash"
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
             f"?key={settings.api_key}"

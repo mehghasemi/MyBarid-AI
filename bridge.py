@@ -117,6 +117,10 @@ class Api:
         stored = db.get_setting("ai_settings", {}) or {}
         settings = AISettings(**{**asdict(AISettings()), **stored})
         settings.api_key = db.load_api_key()
+        if settings.provider == "gemini" and settings.model in {
+            "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-1.5-flash",
+        }:
+            settings.model = "gemini-3.6-flash"
         return settings
 
     # -------------------------------------------------------------- files --
@@ -410,14 +414,14 @@ class Api:
         return [
             {
                 "id": "gemini-flash",
-                "name": "Google Gemini 2.5 Flash (سهمیه رایگان در صورت دسترسی)",
-                "provider": "gemini", "model": "gemini-2.5-flash",
+                "name": "Google Gemini 3.6 Flash (پیشنهادی)",
+                "provider": "gemini", "model": "gemini-3.6-flash",
                 "base_url": "", "note": "نیازمند API Key رایگان Google AI Studio",
             },
             {
                 "id": "gemini-flash-lite",
-                "name": "Google Gemini 2.5 Flash-Lite (سهمیه رایگان در صورت دسترسی)",
-                "provider": "gemini", "model": "gemini-2.5-flash-lite",
+                "name": "Google Gemini 3.6 Flash (گزینه جایگزین)",
+                "provider": "gemini", "model": "gemini-3.6-flash",
                 "base_url": "", "note": "نیازمند API Key رایگان Google AI Studio",
             },
             {
