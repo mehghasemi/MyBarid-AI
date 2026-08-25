@@ -34,14 +34,12 @@
 
     <div class="spacer"></div>
     <div class="status-pill" id="dataset-status">فایلی بارگذاری نشده است.</div>
-    <button id="app-version" class="app-version-btn" onclick="openChangelog()" title="مشاهده تاریخچه تغییرات">نگارش: —</button>
   </div>
 
   <div id="changelog-overlay" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeChangelog()">
     <div class="card changelog-modal">
       <button class="modal-close" onclick="closeChangelog()" aria-label="بستن">×</button>
       <h2>تاریخچه تغییرات</h2>
-      <p class="page-sub">تغییرات انجام‌شده در هر نگارش برنامه</p>
       <div id="changelog-body"></div>
     </div>
   </div>
@@ -122,6 +120,9 @@
   </div>
 
   <div id="main">
+    <div id="toolbar" class="app-toolbar">
+      <button id="app-version" class="app-version-btn" onclick="openChangelog()" title="مشاهده تاریخچه تغییرات">نگارش: —</button>
+    </div>
 
     <!-- ============================================================ Upload -->
     <section class="page active" id="page-upload">

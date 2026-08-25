@@ -363,11 +363,12 @@ function openChangelog() {
       body.innerHTML = '<div class="empty-state">تاریخچه تغییرات در دسترس نیست.</div>';
       return;
     }
-    body.innerHTML = items.map(item => `
+    const sorted = items.slice().sort((a, b) => compareVersions(b.version, a.version));
+    body.innerHTML = sorted.map((item, index) => `
       <article class="changelog-entry">
         <div class="changelog-entry-head">
-          <h3>نگارش ${escapeHtml(item.version || '—')} - ${escapeHtml(item.title || '')}</h3>
-          <span class="badge muted">${escapeHtml(item.date || '')}</span>
+          <h3>نگارش ${escapeHtml(item.version || '—')}${index === 0 ? ' — آخرین نگارش' : ''}</h3>
+          <span class="badge muted">${escapeHtml(formatChangelogDate(item.date))}</span>
         </div>
         <ul>${(item.changes || []).map(change => `<li>${escapeHtml(change)}</li>`).join('')}</ul>
       </article>
@@ -375,6 +376,22 @@ function openChangelog() {
   }).catch(() => {
     body.innerHTML = '<div class="err-box">امکان دریافت تاریخچه تغییرات وجود ندارد.</div>';
   });
+}
+
+function compareVersions(a, b) {
+  const left = String(a || '0').split('.').map(Number);
+  const right = String(b || '0').split('.').map(Number);
+  for (let i = 0; i < Math.max(left.length, right.length); i++) {
+    const diff = (left[i] || 0) - (right[i] || 0);
+    if (diff) return diff;
+  }
+  return 0;
+}
+
+function formatChangelogDate(value) {
+  if (!value) return '—';
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value;
+  return toShamsiStr(iso).split(' ')[0];
 }
 
 function closeChangelog() {
