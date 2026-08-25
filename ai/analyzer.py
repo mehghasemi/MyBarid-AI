@@ -14,8 +14,19 @@ from database import db
 MAX_RETRIES = 2
 
 
-def _case_signature(case: CaseBundle, criteria_ids: list[str], model: str) -> str:
-    parts = [case.case_key, model, ",".join(sorted(criteria_ids))]
+def _case_signature(case: CaseBundle, ai_criteria, settings: AISettings) -> str:
+    criteria_fingerprint = repr([
+        (c.id, c.name_fa, c.evaluation_type, getattr(c, "prompt_fa", None),
+         getattr(c, "description_fa", None))
+        for c in ai_criteria
+    ])
+    # Do not include the API key, but invalidate old results when any
+    # provider/prompt-affecting setting changes.
+    settings_fingerprint = repr((
+        settings.provider, settings.model, settings.base_url,
+        settings.temperature, settings.max_tokens,
+    ))
+    parts = [case.case_key, criteria_fingerprint, settings_fingerprint]
     for n in case.notes:
         parts.append(f"N|{n.note_date}|{n.description}")
     for t in case.tasks:
@@ -33,7 +44,7 @@ def analyze_case(
     if not criteria_ids:
         return {}, None
 
-    sig = _case_signature(case, criteria_ids, settings.model)
+    sig = _case_signature(case, ai_criteria, settings)
     if use_cache:
         cached = db.get_ai_cache(sig)
         if cached:
