@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import time
 from typing import Callable
 
@@ -46,11 +47,18 @@ def analyze_case(
 
     sig = _case_signature(case, ai_criteria, settings)
     if use_cache:
-        cached = db.get_ai_cache(sig)
-        if cached:
-            return _payload_to_scores(cached, criteria_ids), None
+        try:
+            cached = db.get_ai_cache(sig)
+            if cached:
+                return _payload_to_scores(cached, criteria_ids), None
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            # A corrupt/old cache entry must not abort the whole dataset.
+            last_error = f"Cache پاسخ AI قابل استفاده نبود؛ درخواست جدید ارسال شد: {exc}"
 
-    provider = get_provider(settings)
+    try:
+        provider = get_provider(settings)
+    except Exception as exc:  # noqa: BLE001
+        return {}, f"Provider AI قابل استفاده نیست: {exc}"
     system = build_system_prompt(ai_criteria)
     user = build_case_prompt(case)
 
@@ -62,7 +70,11 @@ def analyze_case(
             last_error = str(exc)
             time.sleep(1.5 * (attempt + 1))
             continue
-        payload = extract_json(raw)
+        try:
+            payload = extract_json(raw)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            last_error = f"پاسخ AI قابل پردازش نبود: {exc}"
+            continue
         if payload is None:
             last_error = "خروجی AI یک JSON معتبر نبود."
             continue
@@ -70,9 +82,14 @@ def analyze_case(
         if not valid:
             last_error = f"خروجی AI ناقص بود (فیلدهای مشکل‌دار: {', '.join(problems)})."
             continue
-        if use_cache:
-            db.set_ai_cache(sig, payload)
-        return _payload_to_scores(payload, criteria_ids), None
+        try:
+            scores = _payload_to_scores(payload, criteria_ids)
+            if use_cache:
+                db.set_ai_cache(sig, payload)
+            return scores, None
+        except (KeyError, TypeError, ValueError) as exc:
+            last_error = f"ساختار امتیازهای AI قابل استفاده نبود: {exc}"
+            continue
 
     return {}, last_error or "تحلیل AI برای این Case ناموفق بود."
 
@@ -127,7 +144,11 @@ def analyze_cases(
     for i, (key, case) in enumerate(items):
         if progress_cb:
             progress_cb(i, total, key)
-        scores, error = analyze_case(case, ai_criteria, settings)
+        try:
+            scores, error = analyze_case(case, ai_criteria, settings)
+        except Exception as exc:  # noqa: BLE001
+            # One malformed provider/cache response must not stop all cases.
+            scores, error = {}, f"خطای کنترل‌نشده AI برای این مورد: {exc}"
         if scores:
             results[key] = scores
         if error:

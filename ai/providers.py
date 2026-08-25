@@ -61,9 +61,19 @@ class OpenAICompatibleProvider(BaseProvider):
             raise AIProviderError(f"خطای سرویس AI ({exc.code}): {body[:500]}") from exc
         except urllib.error.URLError as exc:
             raise AIProviderError(f"عدم دسترسی به سرویس AI: {exc.reason}") from exc
+        except json.JSONDecodeError as exc:
+            raise AIProviderError("پاسخ سرویس AI JSON معتبر نبود.") from exc
         try:
-            return data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError) as exc:
+            content = data["choices"][0]["message"]["content"]
+            if isinstance(content, list):
+                content = "".join(
+                    part.get("text", "") for part in content
+                    if isinstance(part, dict)
+                )
+            if not isinstance(content, str) or not content.strip():
+                raise KeyError("content")
+            return content
+        except (KeyError, IndexError, TypeError) as exc:
             raise AIProviderError("پاسخ سرویس AI ساختار مورد انتظار را نداشت.") from exc
 
 
@@ -92,9 +102,17 @@ class GeminiProvider(BaseProvider):
             raise AIProviderError(f"خطای سرویس Gemini ({exc.code}): {body[:500]}") from exc
         except urllib.error.URLError as exc:
             raise AIProviderError(f"عدم دسترسی به سرویس Gemini: {exc.reason}") from exc
+        except json.JSONDecodeError as exc:
+            raise AIProviderError("پاسخ سرویس Gemini JSON معتبر نبود.") from exc
         try:
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError) as exc:
+            parts = data["candidates"][0]["content"]["parts"]
+            text = "".join(
+                part.get("text", "") for part in parts if isinstance(part, dict)
+            )
+            if not text.strip():
+                raise KeyError("text")
+            return text
+        except (KeyError, IndexError, TypeError) as exc:
             raise AIProviderError("پاسخ سرویس Gemini ساختار مورد انتظار را نداشت.") from exc
 
 
