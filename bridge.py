@@ -816,7 +816,8 @@ class Api:
 
     def get_cases_table(self, period: str, page: int, page_size: int,
                          expert_filter: str | None = None, status_reason_filter: list[str] | None = None,
-                         case_number_filter: str | None = None) -> dict:
+                         case_number_filter: str | None = None,
+                         service_filter: str | None = None) -> dict:
         if not self.result:
             return {"ok": False}
         cases, scores = self._resolve_period(period)
@@ -824,22 +825,28 @@ class Api:
         rows = []
         experts_seen = set()
         status_reasons_seen = set()
+        services_seen = set()
         query = (case_number_filter or "").strip().casefold()
         for key, case in cases.items():
             expert = primary_expert(case)
             experts_seen.add(expert)
             if case.status_reason:
                 status_reasons_seen.add(case.status_reason)
+            if case.service:
+                services_seen.add(case.service)
             if expert_filter and expert != expert_filter:
                 continue
             if status_reason_filter and (case.status_reason or "") not in status_reason_filter:
                 continue
             if query and query not in (case.case_number or "").casefold():
                 continue
+            if service_filter and (case.service or "") != service_filter:
+                continue
             b = scores.get(key)
             rows.append({
                 "case_key": key, "case_number": case.case_number, "case_title": case.case_title,
                 "expert": expert, "status_reason": case.status_reason,
+                "service": case.service,
                 "notes": len(case.notes), "tasks": len(case.tasks),
                 "objective_score": b.objective_score if b else None,
                 "ai_score": b.ai_score if b else None,
@@ -854,11 +861,13 @@ class Api:
         return {
             "ok": True, "rows": rows[start:start + page_size], "total": total,
             "experts": sorted(experts_seen), "status_reasons": sorted(status_reasons_seen),
+            "services": sorted(services_seen),
             "unit": self.result.get("unit", "case"),
         }
 
     def get_suspicious(self, expert_filter: str | None = None,
-                       reason_filter: list[str] | None = None) -> dict:
+                       reason_filter: list[str] | None = None,
+                       service_filter: str | None = None) -> dict:
         if not self.result:
             return {"ok": False}
         from analysis.experts import primary_expert
@@ -868,26 +877,37 @@ class Api:
         source_cases = source_result.cases if source_result else (
             self.dataset.cases if self.dataset else self.result["period2"].cases
         )
+        def source_case(case_key):
+            return source_cases.get(case_key) or (
+                self.dataset.cases.get(case_key) if self.dataset else None
+            )
         rows = [
-            {"case_key": s.case_key, "case_number": s.case_number, "case_title": s.case_title, "reasons": s.reasons}
+            {"case_key": s.case_key, "case_number": s.case_number, "case_title": s.case_title,
+             "service": source_case(s.case_key).service if source_case(s.case_key) else None,
+             "reasons": s.reasons}
             for s in all_rows
             if (not expert_filter or (
-                (source_cases.get(s.case_key)
-                 or (self.dataset.cases.get(s.case_key) if self.dataset else None))
+                source_case(s.case_key)
                 and primary_expert(
-                    source_cases.get(s.case_key)
-                    or (self.dataset.cases.get(s.case_key) if self.dataset else None)
+                    source_case(s.case_key)
                 ) == expert_filter
             ))
             and (not reason_filter or any(
                 normalize_reason(reason) in reason_filter for reason in s.reasons
+            ))
+            and (not service_filter or (
+                source_case(s.case_key) and source_case(s.case_key).service == service_filter
             ))
         ]
         experts = sorted({primary_expert(c) for c in source_cases.values()})
         reasons = sorted({
             normalize_reason(reason) for s in all_rows for reason in s.reasons
         })
+        services = sorted({
+            c.service for c in source_cases.values() if c.service
+        })
         return {"ok": True, "rows": rows, "experts": experts, "reasons": reasons,
+                "services": services,
                 "unit": self.result.get("unit", "case")}
 
     def get_data_quality(self) -> dict:

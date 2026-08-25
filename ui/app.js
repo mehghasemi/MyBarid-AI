@@ -9,7 +9,9 @@ const state = {
   analysisDone: false,
   analysisMode: 'comparison',
   casesStatusReasons: [],
+  casesService: '',
   suspiciousReasons: [],
+  suspiciousService: '',
   casesPage: 0,
   casesPageSize: 25,
   charts: {},
@@ -1034,14 +1036,16 @@ async function loadCasesTable(page) {
   const expertFilter = document.getElementById('cases-expert-filter').value || null;
   const statusFilter = state.casesStatusReasons.slice();
   const numberQuery = document.getElementById('cases-number-search').value.trim() || null;
+  const serviceFilter = document.getElementById('cases-service-filter').value || null;
   const res = await api().get_cases_table(period, page, state.casesPageSize, expertFilter,
-    statusFilter.length ? statusFilter : null, numberQuery);
+    statusFilter.length ? statusFilter : null, numberQuery, serviceFilter);
   if (!res.ok) return;
   document.getElementById('cases-empty').style.display = 'none';
   document.getElementById('cases-content').style.display = 'block';
 
   // پر کردن گزینه‌های فیلتر (فقط اگر قبلاً پر نشده یا دوره عوض شده)
   fillFilterOptions('cases-expert-filter', res.experts, expertFilter);
+  fillFilterOptions('cases-service-filter', res.services || [], serviceFilter);
   state.casesStatusReasons = state.casesStatusReasons.filter(v => (res.status_reasons || []).includes(v));
   renderMultiFilterOptions('cases-status-options', res.status_reasons, state.casesStatusReasons, values => {
     state.casesStatusReasons = values;
@@ -1051,12 +1055,12 @@ async function loadCasesTable(page) {
 
   const isTask = res.unit === 'task';
   document.getElementById('cases-table-head').innerHTML = isTask
-    ? '<tr><th>شماره Task</th><th>عنوان</th><th>کارشناس</th><th colspan="2">—</th><th>Objective</th><th>AI</th><th>Final</th></tr>'
-    : '<tr><th>شماره مورد</th><th>عنوان</th><th>کارشناس</th><th>Note</th><th>Task</th><th>Objective</th><th>AI</th><th>Final</th></tr>';
+    ? '<tr><th>شماره Task</th><th>عنوان</th><th>نوع مورد</th><th>کارشناس</th><th colspan="2">—</th><th>Objective</th><th>AI</th><th>Final</th></tr>'
+    : '<tr><th>شماره مورد</th><th>عنوان</th><th>نوع مورد</th><th>کارشناس</th><th>Note</th><th>Task</th><th>Objective</th><th>AI</th><th>Final</th></tr>';
 
   document.getElementById('cases-table-body').innerHTML = res.rows.map(r => `
     <tr class="clickable" onclick="openCaseDetail('${r.case_key.replace(/'/g, "\\'")}','${period}')">
-      <td>${r.case_number || '—'}</td><td>${r.case_title || '—'}</td><td>${r.expert}</td>
+      <td>${r.case_number || '—'}</td><td>${r.case_title || '—'}</td><td>${r.service || '—'}</td><td>${r.expert}</td>
       ${isTask ? '<td colspan="2">—</td>' : `<td>${r.notes}</td><td>${r.tasks}</td>`}
       <td>${fmt(r.objective_score)}</td><td>${r.ai_analyzed ? `<span class="badge good" title="تحلیل AI قبلاً انجام شده است">${fmt(r.ai_score)} ✓</span>` : '<span class="badge muted">انجام نشده</span>'}</td>
       <td><span class="badge ${scoreBadgeClass(r.final_score)}">${fmt(r.final_score)}</span></td>
@@ -1182,16 +1186,16 @@ async function runSingleCaseAi(caseKey, force = false) {
   renderCaseAiActions(caseKey, true, true);
   const started = await api().start_case_ai_analysis(caseKey, force);
   if (!started.ok) {
-    showCaseAiError(started.error || 'شروع بررسی AI ناموفق بود');
     renderCaseAiActions(caseKey, false);
+    showCaseAiError(started.error || 'شروع بررسی AI ناموفق بود');
     return;
   }
   const poll = async () => {
     const status = await api().get_case_ai_status(caseKey);
     if (status.running) { setTimeout(poll, 500); return; }
     if (status.error) {
-      showCaseAiError(status.error);
       renderCaseAiActions(caseKey, false);
+      showCaseAiError(status.error);
       return;
     }
     toast('بررسی AI این کیس با موفقیت انجام شد', 'success');
@@ -1250,7 +1254,8 @@ function escapeHtml(text) {
 ------------------------------------------------------------------------ */
 async function loadSuspicious() {
   const expert = document.getElementById('suspicious-expert-filter')?.value || null;
-  const r = await api().get_suspicious(expert, state.suspiciousReasons.length ? state.suspiciousReasons : null);
+  const service = document.getElementById('suspicious-service-filter')?.value || null;
+  const r = await api().get_suspicious(expert, state.suspiciousReasons.length ? state.suspiciousReasons : null, service);
   if (!r.ok) return;
   const badge = document.getElementById('suspicious-badge');
   if (badge) {
@@ -1260,6 +1265,7 @@ async function loadSuspicious() {
   document.getElementById('suspicious-empty').style.display = 'none';
   document.getElementById('suspicious-content').style.display = 'block';
   fillFilterOptions('suspicious-expert-filter', r.experts || [], expert);
+  fillFilterOptions('suspicious-service-filter', r.services || [], service);
   renderMultiFilterOptions('suspicious-reason-options', r.reasons || [], state.suspiciousReasons, values => {
     state.suspiciousReasons = values;
     updateMultiFilterButton('suspicious-reason-filter-wrap', values, 'انتخاب دلایل');
@@ -1267,7 +1273,7 @@ async function loadSuspicious() {
   });
   document.getElementById('suspicious-body').innerHTML = r.rows.map(row => `
     <tr class="clickable" data-case-number="${escapeHtml(row.case_number || '')}" onclick="openCaseDetail('${row.case_key.replace(/'/g, "\\'")}','all')">
-      <td>${row.case_number || '—'}</td><td>${row.case_title || '—'}</td>
+      <td>${row.case_number || '—'}</td><td>${row.case_title || '—'}</td><td>${row.service || '—'}</td>
       <td><div class="chip-list">${row.reasons.map(rs => `<span class="chip">${rs}</span>`).join('')}</div></td>
     </tr>`).join('');
   filterSuspiciousTable();

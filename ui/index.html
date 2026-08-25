@@ -430,6 +430,10 @@
             <label class="field-label">کارشناس</label>
             <select id="cases-expert-filter" onchange="loadCasesTable(0)"><option value="">همه کارشناسان</option></select>
           </div>
+          <div class="field" style="max-width:220px">
+            <label class="field-label">نوع مورد</label>
+            <select id="cases-service-filter" onchange="loadCasesTable(0)"><option value="">همه انواع موارد</option></select>
+          </div>
           <div class="field" style="max-width:240px">
             <label class="field-label">Status Reason (چند انتخابی)</label>
             <div class="multi-filter" id="cases-status-filter-wrap">
@@ -473,6 +477,10 @@
             <label class="field-label">کارشناس</label>
             <select id="suspicious-expert-filter" onchange="loadSuspicious()"><option value="">همه کارشناسان</option></select>
           </div>
+          <div class="field" style="max-width:220px">
+            <label class="field-label">نوع مورد</label>
+            <select id="suspicious-service-filter" onchange="loadSuspicious()"><option value="">همه انواع موارد</option></select>
+          </div>
           <div class="field" style="max-width:280px">
             <label class="field-label">دلیل (چند انتخابی)</label>
             <div class="multi-filter" id="suspicious-reason-filter-wrap">
@@ -489,7 +497,7 @@
           </div>
         </div>
         <div class="card">
-          <table><thead><tr><th>شماره مورد</th><th>عنوان</th><th>دلایل</th></tr></thead><tbody id="suspicious-body"></tbody></table>
+          <table><thead><tr><th>شماره مورد</th><th>عنوان</th><th>نوع مورد</th><th>دلایل</th></tr></thead><tbody id="suspicious-body"></tbody></table>
         </div>
       </div>
     </section>

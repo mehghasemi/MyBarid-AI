@@ -30,6 +30,7 @@ Thumbs.db
 # PyInstaller build output
 /build/
 /dist/
+MyBarid-AI.exe
 
 # کلید و اسرار (هرگز نباید Commit شوند)
 *.env
