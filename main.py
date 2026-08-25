@@ -17,6 +17,7 @@ from bridge import Api  # noqa: E402
 from database import db  # noqa: E402
 
 WEBVIEW2_DOWNLOAD_URL = "https://developer.microsoft.com/en-us/microsoft-edge/webview2/"
+WEBVIEW_STORAGE_PATH = db.app_data_dir() / "webview2"
 
 
 def get_app_version() -> str:
@@ -57,6 +58,7 @@ def main():
         text_select=True,
     )
     api.set_window(window)
+    WEBVIEW_STORAGE_PATH.mkdir(parents=True, exist_ok=True)
 
     # روی ویندوز، موتور نمایش را صراحتاً EdgeChromium (WebView2) درخواست می‌کنیم.
     # اگر این موتور روی سیستم موجود نباشد، pywebview به‌صورت خاموش سراغ یک موتور
@@ -66,7 +68,15 @@ def main():
     # خطا را می‌گیریم و به کاربر راهنمایی روشن می‌دهیم.
     gui_backend = "edgechromium" if sys.platform == "win32" else None
     try:
-        webview.start(gui=gui_backend, debug="--debug" in sys.argv)
+        # Keep a stable, user-writable WebView2 profile. pywebview's default
+        # private-mode temp directory can disappear before WebView2 finishes
+        # initialization, which causes intermittent "Not Responding" startup.
+        webview.start(
+            gui=gui_backend,
+            debug="--debug" in sys.argv,
+            private_mode=False,
+            storage_path=str(WEBVIEW_STORAGE_PATH),
+        )
     except Exception as exc:  # noqa: BLE001
         traceback.print_exc()
         _show_fatal_error(
