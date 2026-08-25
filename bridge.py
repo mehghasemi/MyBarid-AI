@@ -9,13 +9,14 @@ from datetime import datetime
 from pathlib import Path
 
 from ai.providers import AISettings
-from ai.analyzer import is_case_ai_analyzed
+from ai.analyzer import analyze_case, is_case_ai_analyzed
 from analysis.timeline import build_timeline
 from config.criteria_config import Category, Criterion, CriteriaConfig, load_criteria_config, save_criteria_config
 import webview
 from data.loader import ExcelLoadError
 from database import db
 from pipeline import Dataset, run_full_analysis, run_general_analysis
+from analysis.scoring import score_case
 import pipeline as pipeline_mod
 from reports.csv_export import export_csv
 from reports.employee_report_export import export_expert_report_excel as export_expert_report_excel_file
@@ -66,6 +67,7 @@ class Api:
         self.last_periods: tuple | None = None
         self.status = {"running": False, "done": False, "stage": "", "current": 0, "total": 0, "error": None}
         self._analysis_generation = 0
+        self._case_ai_status: dict[str, dict] = {}
         self._lock = threading.Lock()
 
     def __dir__(self):
@@ -766,6 +768,51 @@ class Api:
                 case, self.config, self.ai_settings
             ),
         }
+
+    def start_case_ai_analysis(self, case_key: str, force: bool = False) -> dict:
+        if not self.dataset:
+            return {"ok": False, "error": "ابتدا فایل‌های داده را بارگذاری کنید."}
+        case = self.dataset.cases.get(case_key)
+        if not case:
+            return {"ok": False, "error": "کیس پیدا نشد."}
+        if not self.ai_settings.enabled or not self.ai_settings.api_key:
+            return {"ok": False, "error": "تحلیل AI فعال نیست یا کلید API وارد نشده است."}
+        with self._lock:
+            if self._case_ai_status.get(case_key, {}).get("running"):
+                return {"ok": True, "running": True, "case_key": case_key}
+            self._case_ai_status[case_key] = {"running": True, "done": False, "error": None}
+        threading.Thread(
+            target=self._run_case_ai_worker,
+            args=(case_key, copy.deepcopy(case), copy.deepcopy(self.config),
+                  copy.deepcopy(self.ai_settings), force),
+            daemon=True,
+        ).start()
+        return {"ok": True, "running": True, "case_key": case_key}
+
+    def _run_case_ai_worker(self, case_key, case, config, settings, force):
+        try:
+            criteria = [c for _, c in config.active_criteria()
+                        if c.evaluation_type in ("AI", "HYBRID")]
+            scores, error = analyze_case(case, criteria, settings, force=force)
+            if error:
+                raise RuntimeError(error)
+            breakdown = score_case(case, config, scores)
+            with self._lock:
+                if self.result:
+                    for name in ("period1", "period2", "general"):
+                        result = self.result.get(name)
+                        if result and case_key in result.cases:
+                            result.scores[case_key] = breakdown
+                self._case_ai_status[case_key] = {"running": False, "done": True, "error": None}
+        except Exception as exc:  # noqa: BLE001
+            with self._lock:
+                self._case_ai_status[case_key] = {"running": False, "done": False, "error": str(exc)}
+
+    def get_case_ai_status(self, case_key: str) -> dict:
+        with self._lock:
+            return dict(self._case_ai_status.get(
+                case_key, {"running": False, "done": False, "error": None}
+            ))
 
     def get_cases_table(self, period: str, page: int, page_size: int,
                          expert_filter: str | None = None, status_reason_filter: list[str] | None = None,

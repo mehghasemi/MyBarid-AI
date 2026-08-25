@@ -1123,6 +1123,7 @@ async function openCaseDetail(caseKey, period) {
   document.getElementById('case-detail-meta').innerHTML =
     `مشتری: ${d.customer || '—'} | Owner: ${d.owner || '—'} | سرویس: ${d.service || '—'} | وضعیت: ${d.status || '—'} / ${d.status_reason || ''}`;
 
+  renderCaseAiActions(caseKey, d.ai_analyzed);
   const scenarioBox = document.getElementById('case-detail-scenario-desc');
   let scenarioHtml = '';
   if (d.scenario && d.scenario.trim()) {
@@ -1160,6 +1161,61 @@ async function openCaseDetail(caseKey, period) {
     document.getElementById('case-breakdown-body').innerHTML = '<tr><td colspan="5" style="color:var(--muted)">برای این مورد امتیازی در دوره انتخاب‌شده محاسبه نشده است.</td></tr>';
   }
   switchCaseTab('timeline');
+}
+
+function renderCaseAiActions(caseKey, analyzed, running = false) {
+  const box = document.getElementById('case-ai-actions');
+  if (!box) return;
+  if (running) {
+    box.innerHTML = '<span class="badge warn">در حال بررسی با AI...</span>';
+  } else if (analyzed) {
+    box.innerHTML = `<span class="badge good">این کیس قبلاً با AI بررسی شده است</span>
+      <button class="btn ghost" onclick="runSingleCaseAi('${caseKey.replace(/'/g, "\\'")}', true)">بررسی مجدد با AI</button>`;
+  } else {
+    box.innerHTML = `<button class="btn primary" onclick="runSingleCaseAi('${caseKey.replace(/'/g, "\\'")}', false)">بررسی این کیس با AI</button>`;
+  }
+}
+
+async function runSingleCaseAi(caseKey, force = false) {
+  renderCaseAiActions(caseKey, true, true);
+  const started = await api().start_case_ai_analysis(caseKey, force);
+  if (!started.ok) {
+    toast(started.error || 'شروع بررسی AI ناموفق بود', 'error');
+    renderCaseAiActions(caseKey, false);
+    return;
+  }
+  const poll = async () => {
+    const status = await api().get_case_ai_status(caseKey);
+    if (status.running) { setTimeout(poll, 500); return; }
+    if (status.error) {
+      toast(status.error, 'error');
+      renderCaseAiActions(caseKey, false);
+      return;
+    }
+    toast('بررسی AI این کیس با موفقیت انجام شد', 'success');
+    const detail = await api().get_case_detail(caseKey, 'all');
+    renderCaseAiActions(caseKey, detail.ai_analyzed);
+    if (detail.breakdown) renderCaseBreakdown(detail.breakdown);
+    refreshAllReports();
+  };
+  poll();
+}
+
+function renderCaseBreakdown(breakdown) {
+  document.getElementById('case-score-summary').innerHTML = [
+    ['Objective', breakdown.objective_score], ['AI', breakdown.ai_score], ['Final', breakdown.final_score],
+    ['Coverage', `${Math.round((breakdown.coverage || 0) * 100)}%`],
+    ['Confidence', breakdown.confidence || '—'],
+    ['AI استفاده شده؟', breakdown.ai_used ? 'بله' : 'خیر'],
+    ['Outcome', breakdown.outcome_status || 'Unknown'],
+    ['Lifecycle', breakdown.lifecycle_status || '—'],
+  ].map(([l, v]) => `<div class="card kpi"><div class="label">${l}</div><div class="value small">${typeof v === 'number' ? fmt(v) : v}</div></div>`).join('');
+  document.getElementById('case-breakdown-body').innerHTML = breakdown.criteria.map(c => `
+    <tr><td>${c.name_fa}</td><td>${c.category}</td><td><span class="type-tag">${c.type}</span></td>
+      <td>${c.score === null ? '<span class="badge muted">N/A</span>' : `<span class="badge ${scoreBadgeClass(c.score)}">${fmt(c.score, 0)}</span>`}</td>
+      <td>${Math.round((c.coverage || 0) * 100)}%</td>
+      <td><span class="badge ${c.confidence === 'high' ? 'good' : c.confidence === 'medium' ? 'warn' : 'muted'}">${c.confidence || 'low'}</span></td>
+      <td style="font-size:12px;color:var(--muted)">${escapeHtml(c.evidence || c.na_reason || '')}</td></tr>`).join('');
 }
 
 function closeCaseModal() {
