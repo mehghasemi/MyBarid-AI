@@ -79,7 +79,11 @@ def analyze_case(
         if payload is None:
             last_error = "خروجی AI یک JSON معتبر نبود."
             continue
-        valid, problems = validate_case_analysis(payload, criteria_ids)
+        try:
+            valid, problems = validate_case_analysis(payload, criteria_ids)
+        except Exception as exc:  # noqa: BLE001
+            last_error = "ساختار پاسخ AI قابل بررسی نبود؛ پاسخ معتبر برای معیارها دریافت نشد."
+            continue
         if not valid:
             last_error = f"خروجی AI ناقص بود (فیلدهای مشکل‌دار: {', '.join(problems)})."
             continue

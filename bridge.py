@@ -793,9 +793,14 @@ class Api:
         try:
             criteria = [c for _, c in config.active_criteria()
                         if c.evaluation_type in ("AI", "HYBRID")]
+            if not criteria:
+                raise RuntimeError("هیچ معیار AI فعالی برای این کیس وجود ندارد.")
             scores, error = analyze_case(case, criteria, settings, force=force)
             if error:
-                raise RuntimeError(error)
+                message = str(error)
+                if "criteria" in message.casefold() or "keyerror" in message.casefold():
+                    message = "پاسخ سرویس AI ساختار معتبر نداشت و قابل استفاده نبود. اتصال، مدل و قالب پاسخ JSON را بررسی کنید."
+                raise RuntimeError(message)
             breakdown = score_case(case, config, scores)
             with self._lock:
                 if self.result:
