@@ -45,7 +45,9 @@ def validate_case_analysis(payload: dict, expected_criteria: list[str]) -> tuple
     problems: list[str] = []
     if not isinstance(payload, dict):
         return False, ["payload"]
-    if not isinstance(payload.get("criteria"), dict) and not isinstance(payload.get("scores"), dict):
+    criteria = payload.get("criteria")
+    scores = payload.get("scores")
+    if not isinstance(criteria, dict) and not isinstance(scores, dict):
         return False, ["criteria_or_scores"]
 
     for criterion_id in expected_criteria:
@@ -56,6 +58,9 @@ def validate_case_analysis(payload: dict, expected_criteria: list[str]) -> tuple
         source_events = item.get("source_events")
         na_reason = item.get("na_reason")
 
+        if not isinstance(item, dict):
+            problems.append(f"{criterion_id}.object")
+            continue
         if score is None:
             if not na_reason:
                 problems.append(f"{criterion_id}.na_reason")

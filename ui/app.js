@@ -1165,7 +1165,9 @@ async function openCaseDetail(caseKey, period) {
 
 function renderCaseAiActions(caseKey, analyzed, running = false) {
   const box = document.getElementById('case-ai-actions');
+  const errorBox = document.getElementById('case-ai-error');
   if (!box) return;
+  if (errorBox) errorBox.style.display = 'none';
   if (running) {
     box.innerHTML = '<span class="badge warn">در حال بررسی با AI...</span>';
   } else if (analyzed) {
@@ -1180,7 +1182,7 @@ async function runSingleCaseAi(caseKey, force = false) {
   renderCaseAiActions(caseKey, true, true);
   const started = await api().start_case_ai_analysis(caseKey, force);
   if (!started.ok) {
-    toast(started.error || 'شروع بررسی AI ناموفق بود', 'error');
+    showCaseAiError(started.error || 'شروع بررسی AI ناموفق بود');
     renderCaseAiActions(caseKey, false);
     return;
   }
@@ -1188,7 +1190,7 @@ async function runSingleCaseAi(caseKey, force = false) {
     const status = await api().get_case_ai_status(caseKey);
     if (status.running) { setTimeout(poll, 500); return; }
     if (status.error) {
-      toast(status.error, 'error');
+      showCaseAiError(status.error);
       renderCaseAiActions(caseKey, false);
       return;
     }
@@ -1199,6 +1201,15 @@ async function runSingleCaseAi(caseKey, force = false) {
     refreshAllReports();
   };
   poll();
+}
+
+function showCaseAiError(message) {
+  const box = document.getElementById('case-ai-error');
+  if (box) {
+    box.textContent = `بررسی AI انجام نشد:\n${message}`;
+    box.style.display = 'block';
+  }
+  toast('بررسی AI انجام نشد؛ جزئیات در پنجره کیس نمایش داده شد', 'error');
 }
 
 function renderCaseBreakdown(breakdown) {
