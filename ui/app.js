@@ -335,6 +335,36 @@ async function pollStatus() {
   }
 }
 
+function openChangelog() {
+  const overlay = document.getElementById('changelog-overlay');
+  if (!overlay) return;
+  overlay.style.display = 'flex';
+  const body = document.getElementById('changelog-body');
+  body.innerHTML = '<div class="empty-state">در حال دریافت تاریخچه تغییرات...</div>';
+  api().get_changelog().then(items => {
+    if (!items || !items.length) {
+      body.innerHTML = '<div class="empty-state">تاریخچه تغییرات در دسترس نیست.</div>';
+      return;
+    }
+    body.innerHTML = items.map(item => `
+      <article class="changelog-entry">
+        <div class="changelog-entry-head">
+          <h3>نگارش ${escapeHtml(item.version || '—')} - ${escapeHtml(item.title || '')}</h3>
+          <span class="badge muted">${escapeHtml(item.date || '')}</span>
+        </div>
+        <ul>${(item.changes || []).map(change => `<li>${escapeHtml(change)}</li>`).join('')}</ul>
+      </article>
+    `).join('');
+  }).catch(() => {
+    body.innerHTML = '<div class="err-box">امکان دریافت تاریخچه تغییرات وجود ندارد.</div>';
+  });
+}
+
+function closeChangelog() {
+  const overlay = document.getElementById('changelog-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
 async function refreshAllReports() {
   await Promise.all([
     loadDashboard(), loadComparison(), loadRanking(), loadSuspicious(),

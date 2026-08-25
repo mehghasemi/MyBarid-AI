@@ -21,6 +21,7 @@ from reports.excel_export import export_excel
 
 USER_CONFIG_PATH = db.app_data_dir() / "criteria_config.json"
 VERSION_FILE = Path(__file__).resolve().parent / "VERSION"
+CHANGELOG_FILE = Path(__file__).resolve().parent / "CHANGELOG.json"
 
 
 def get_app_version() -> str:
@@ -61,6 +62,15 @@ class Api:
 
     def get_version(self) -> str:
         return get_app_version()
+
+    def get_changelog(self) -> list[dict]:
+        if not CHANGELOG_FILE.exists():
+            return []
+        try:
+            payload = json.loads(CHANGELOG_FILE.read_text(encoding="utf-8"))
+            return payload if isinstance(payload, list) else []
+        except (OSError, json.JSONDecodeError):
+            return []
 
     # ------------------------------------------------------------- config --
 
