@@ -772,9 +772,15 @@ def _breakdown_to_dict(b) -> dict:
     return {
         "objective_score": b.objective_score, "ai_score": b.ai_score, "final_score": b.final_score,
         "ai_used": b.ai_used, "category_scores": b.category_scores,
+        "coverage": b.coverage, "confidence": b.confidence,
+        "na_criteria": b.na_criteria, "criteria_version": b.criteria_version,
+        "outcome_status": b.outcome_status, "lifecycle_status": b.lifecycle_status,
         "criteria": [
             {"id": c.criterion_id, "name_fa": c.name_fa, "category": c.category_name_fa,
-             "type": c.evaluation_type, "score": c.score, "evidence": c.evidence}
+             "type": c.evaluation_type, "score": c.score, "evidence": c.evidence,
+             "coverage": c.coverage, "confidence": c.confidence,
+             "na_reason": c.na_reason, "source_events": c.source_events,
+             "criteria_version": c.criteria_version}
             for c in b.criterion_scores
         ],
     }

@@ -1,54 +1,61 @@
 from __future__ import annotations
 
+import json
+
+from analysis.timeline import build_timeline
 from config.criteria_config import Criterion
 from data.cleaner import CaseBundle
-from analysis.timeline import build_timeline
 
-SYSTEM_PROMPT_TEMPLATE = """تو یک «ارزیاب ارشد کیفیت خدمات پس از فروش و مستندسازی CRM» هستی.
 
-اصول کار تو:
-۱. فقط بر اساس اطلاعاتی که در ادامه (متن Noteها و Taskهای همین Case) داده می‌شود قضاوت کن.
-۲. هرگز اطلاعاتی را که در Case وجود ندارد حدس نزن یا نسازی.
-۳. اگر شواهد کافی برای یک معیار نبود، امتیاز را پایین بگذار و در evidence همین را صریحاً بنویس؛ عدد را دراماتیک نکن.
-۴. بین «واقعیت ثبت‌شده» (Fact) و «برداشت خودت» (Interpretation) در نوشتن evidence تفاوت قائل شو.
-۵. برای هر معیار، evidence باید مستقیماً به متن Note/Task ارجاع بدهد (نه یک جمله کلی).
-۶. کیفیت اقدام را نسبت به مشکلی که مطرح شده بسنج، نه نسبت به یک استاندارد انتزاعی.
-۷. نقاط قوت، نقاط ضعف و یک پیشنهاد عملی و مشخص (نه کلی‌گویی) استخراج کن.
-۸. خروجی تو باید فقط یک شیء JSON معتبر باشد، بدون هیچ متن قبل یا بعد از آن.
+SYSTEM_PROMPT_TEMPLATE = """You are a CRM service-quality evaluator.
 
-معیارهایی که باید امتیاز بدهی (هرکدام بین ۰ تا ۱۰۰):
+Evaluate only the supplied Case events. Never infer missing fields, SLA, status
+history, customer outcome, ownership history, or waiting periods.
+
+AI is allowed only for semantic criteria such as diagnosis/action, outcome
+contribution, and documentation sufficiency. Do not score text length, word
+count, sentence count, or keyword count as quality.
+
+Every numeric score must include concrete evidence from an event, an event
+reference when available, and confidence. If evidence is missing, contradictory,
+template-like, copied, or too vague, return score=null and a na_reason.
+
+Return JSON only in this shape:
+{
+  "criteria": {
+    "<criterion_id>": {
+      "score": 0-100 or null,
+      "evidence": "fact-based explanation",
+      "source_events": [{"event_type": "note|task", "event_id": "...", "event_date": "..."}],
+      "confidence": "low|medium|high",
+      "na_reason": "required only when score is null"
+    }
+  },
+  "confidence": "low|medium|high"
+}
+
+Criteria:
 {criteria_list}
-
-ساختار دقیق JSON خروجی:
-{{
-  "scores": {{ "<criterion_id>": <عدد ۰ تا ۱۰۰>, ... }},
-  "evidence": {{ "<criterion_id>": "<دلیل کوتاه مبتنی بر متن Case>", ... }},
-  "strengths": ["..."],
-  "weaknesses": ["..."],
-  "recommendations": ["..."],
-  "confidence": "low" | "medium" | "high"
-}}
 """
 
 
 def build_system_prompt(criteria: list[Criterion]) -> str:
-    lines = "\n".join(f"- {c.id}: {c.name_fa} — {c.description_fa}" for c in criteria)
+    lines = "\n".join(
+        f"- {criterion.id}: {criterion.name_fa} — {criterion.description_fa}"
+        for criterion in criteria
+    )
     return SYSTEM_PROMPT_TEMPLATE.format(criteria_list=lines)
 
 
 def build_case_prompt(case: CaseBundle) -> str:
     timeline = build_timeline(case)
-    lines = [
-        f"Case Number: {case.case_number or '(نامشخص)'}",
-        f"عنوان: {case.case_title or '(نامشخص)'}",
-        f"مشتری: {case.customer or '(نامشخص)'}",
-        f"سرویس: {case.service or '(نامشخص)'}",
-        f"وضعیت فعلی: {case.status or '(نامشخص)'} / {case.status_reason or ''}",
-        "",
-        "رویدادهای Case به‌ترتیب زمانی:",
-    ]
-    for ev in timeline:
-        lines.append(f"[{ev['date']}] ({ev['type']} | {ev['role']} | {ev['author']}): {ev['text']}")
-    if not timeline:
-        lines.append("(هیچ رویداد دارای تاریخ معتبر ثبت نشده است.)")
-    return "\n".join(lines)
+    payload = {
+        "case_number": case.case_number,
+        "case_title": case.case_title,
+        "customer": case.customer,
+        "service": case.service,
+        "status": case.status,
+        "status_reason": case.status_reason,
+        "events": timeline,
+    }
+    return json.dumps(payload, ensure_ascii=False, default=str, indent=2)

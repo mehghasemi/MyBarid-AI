@@ -67,13 +67,34 @@ def analyze_case(
 
 
 def _payload_to_scores(payload: dict, criteria_ids: list[str]) -> dict[str, tuple[float, str]]:
+    criteria = payload.get("criteria", {})
     scores = payload.get("scores", {})
     evidence = payload.get("evidence", {})
     return {
-        cid: (float(scores[cid]), str(evidence.get(cid, "")))
+        cid: (
+            float(criteria[cid]["score"]) if cid in criteria else float(scores[cid]),
+            _format_evidence(
+                criteria[cid].get("evidence", ""),
+                criteria[cid].get("source_events", []),
+            ) if cid in criteria else str(evidence.get(cid, "")),
+        )
         for cid in criteria_ids
-        if cid in scores and isinstance(scores[cid], (int, float))
+        if (
+            (cid in criteria and isinstance(criteria[cid], dict)
+             and isinstance(criteria[cid].get("score"), (int, float)))
+            or (cid in scores and isinstance(scores[cid], (int, float)))
+        )
     }
+
+
+def _format_evidence(evidence, source_events) -> str:
+    if isinstance(evidence, dict):
+        text = evidence.get("text") or evidence.get("fact") or str(evidence)
+    else:
+        text = str(evidence or "")
+    if source_events:
+        return f"{text} | رویدادهای مبنا: {source_events}"
+    return text
 
 
 def analyze_cases(
