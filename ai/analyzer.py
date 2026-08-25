@@ -38,6 +38,7 @@ def _case_signature(case: CaseBundle, ai_criteria, settings: AISettings) -> str:
 
 def analyze_case(
     case: CaseBundle, ai_criteria, settings: AISettings, use_cache: bool = True,
+    force: bool = False,
 ) -> tuple[dict[str, tuple[float, str]], str | None]:
     """یک Case را تحلیل می‌کند. خروجی: (scores_by_criterion, error_message).
     اگر AI شکست بخورد، دیکشنری خالی برمی‌گردد و پیام خطا پر می‌شود؛ هرگز امتیاز جعلی تولید نمی‌شود."""
@@ -46,7 +47,7 @@ def analyze_case(
         return {}, None
 
     sig = _case_signature(case, ai_criteria, settings)
-    if use_cache:
+    if use_cache and not force:
         try:
             cached = db.get_ai_cache(sig)
             if cached:
@@ -94,6 +95,25 @@ def analyze_case(
     return {}, last_error or "تحلیل AI برای این Case ناموفق بود."
 
 
+def is_case_ai_analyzed(
+    case: CaseBundle, config: CriteriaConfig, settings: AISettings,
+) -> bool:
+    """Whether a successful cached AI result exists for this case/settings."""
+    if not settings.enabled or not settings.api_key:
+        return False
+    ai_criteria = [
+        c for _, c in config.active_criteria()
+        if c.evaluation_type in ("AI", "HYBRID")
+    ]
+    if not ai_criteria:
+        return False
+    try:
+        cached = db.get_ai_cache(_case_signature(case, ai_criteria, settings))
+        return bool(cached and _payload_to_scores(cached, [c.id for c in ai_criteria]))
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+
+
 def _payload_to_scores(payload: dict, criteria_ids: list[str]) -> dict[str, tuple[float, str]]:
     criteria = payload.get("criteria", {})
     scores = payload.get("scores", {})
@@ -130,6 +150,7 @@ def analyze_cases(
     config: CriteriaConfig,
     settings: AISettings,
     progress_cb: Callable[[int, int, str], None] | None = None,
+    force: bool = False,
 ) -> tuple[dict[str, dict[str, tuple[float, str]]], dict[str, str]]:
     """تحلیل AI برای مجموعه‌ای از Caseها. اگر AI غیرفعال باشد، دیکشنری خالی برمی‌گردد
     و بقیه Pipeline بدون AI (فقط Rule-Based) ادامه پیدا می‌کند."""
@@ -145,7 +166,7 @@ def analyze_cases(
         if progress_cb:
             progress_cb(i, total, key)
         try:
-            scores, error = analyze_case(case, ai_criteria, settings)
+            scores, error = analyze_case(case, ai_criteria, settings, force=force)
         except Exception as exc:  # noqa: BLE001
             # One malformed provider/cache response must not stop all cases.
             scores, error = {}, f"خطای کنترل‌نشده AI برای این مورد: {exc}"

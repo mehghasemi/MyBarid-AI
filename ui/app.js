@@ -296,7 +296,7 @@ async function clearDataset() {
 /* ------------------------------------------------------------------------
    Periods & Run
 ------------------------------------------------------------------------ */
-async function runAnalysis() {
+async function runAnalysis(forceAi = false) {
   if (!state.datasetLoaded) { toast('ابتدا فایل‌ها را بارگذاری کنید', 'error'); return; }
   const mode = document.getElementById('analysis-mode').value;
   const p1s = mode === 'comparison' ? getJalaliPickerISO('p1-start-picker') : '';
@@ -311,7 +311,7 @@ async function runAnalysis() {
   document.getElementById('progress-area').style.display = 'block';
   document.getElementById('run-result').innerHTML = '';
 
-  const res = await api().start_analysis(p1s, p1e, p2s, p2e, expertGroup, mode);
+  const res = await api().start_analysis(p1s, p1e, p2s, p2e, expertGroup, mode, forceAi);
   if (!res.ok) {
     toast(res.error, 'error');
     document.getElementById('btn-run').disabled = false;
@@ -1058,7 +1058,7 @@ async function loadCasesTable(page) {
     <tr class="clickable" onclick="openCaseDetail('${r.case_key.replace(/'/g, "\\'")}','${period}')">
       <td>${r.case_number || '—'}</td><td>${r.case_title || '—'}</td><td>${r.expert}</td>
       ${isTask ? '<td colspan="2">—</td>' : `<td>${r.notes}</td><td>${r.tasks}</td>`}
-      <td>${fmt(r.objective_score)}</td><td>${fmt(r.ai_score)}</td>
+      <td>${fmt(r.objective_score)}</td><td>${r.ai_analyzed ? `<span class="badge good" title="تحلیل AI قبلاً انجام شده است">${fmt(r.ai_score)} ✓</span>` : '<span class="badge muted">انجام نشده</span>'}</td>
       <td><span class="badge ${scoreBadgeClass(r.final_score)}">${fmt(r.final_score)}</span></td>
     </tr>`).join('');
   const start = page * state.casesPageSize;

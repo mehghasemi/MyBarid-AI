@@ -98,14 +98,15 @@ class PeriodResult:
 def run_period(
     dataset: Dataset, config: CriteriaConfig, start: datetime, end: datetime,
     ai_settings: AISettings, progress_cb: Callable[[int, int, str], None] | None = None,
-    expert_filter: set[str] | None = None, unit: str = "case",
+    expert_filter: set[str] | None = None, unit: str = "case", force_ai: bool = False,
 ) -> PeriodResult:
     if unit == "task":
         cases = filter_period_task_mode(dataset, start, end, expert_filter)
     else:
         cases, _ = filter_period(dataset, start, end, expert_filter)
     # در حالت Task، AI فعلاً اجرا نمی‌شود (معیارهای Task مستقل همگی Rule-Based تعریف شده‌اند)
-    ai_results, ai_errors = ({}, {}) if unit == "task" else analyze_cases(cases, config, ai_settings, progress_cb)
+    ai_results, ai_errors = ({}, {}) if unit == "task" else analyze_cases(
+        cases, config, ai_settings, progress_cb, force=force_ai)
     scores = score_all(cases, config, ai_results, unit=unit)
     return PeriodResult(cases=cases, scores=scores, ai_errors=ai_errors)
 
@@ -114,7 +115,7 @@ def run_full_analysis(
     dataset: Dataset, config: CriteriaConfig,
     period1: tuple[datetime, datetime], period2: tuple[datetime, datetime],
     ai_settings: AISettings, progress_cb: Callable[[str, int, int], None] | None = None,
-    expert_filter: set[str] | None = None, unit: str = "case",
+    expert_filter: set[str] | None = None, unit: str = "case", force_ai: bool = False,
 ) -> dict:
     def cb_wrap(label):
         def _cb(i, n, key):
@@ -122,8 +123,8 @@ def run_full_analysis(
                 progress_cb(label, i, n)
         return _cb
 
-    r1 = run_period(dataset, config, period1[0], period1[1], ai_settings, cb_wrap("دوره اول"), expert_filter, unit)
-    r2 = run_period(dataset, config, period2[0], period2[1], ai_settings, cb_wrap("دوره دوم"), expert_filter, unit)
+    r1 = run_period(dataset, config, period1[0], period1[1], ai_settings, cb_wrap("دوره اول"), expert_filter, unit, force_ai)
+    r2 = run_period(dataset, config, period2[0], period2[1], ai_settings, cb_wrap("دوره دوم"), expert_filter, unit, force_ai)
 
     comparison = compare_periods(r1.cases, r1.scores, r2.cases, r2.scores, config)
 
@@ -164,7 +165,7 @@ def run_full_analysis(
 def run_general_analysis(
     dataset: Dataset, config: CriteriaConfig, ai_settings: AISettings,
     progress_cb: Callable[[str, int, int], None] | None = None,
-    expert_filter: set[str] | None = None, unit: str = "case",
+    expert_filter: set[str] | None = None, unit: str = "case", force_ai: bool = False,
 ) -> dict:
     """Analyze the current dataset as one independent population."""
     def progress(i, n, key):
@@ -181,7 +182,7 @@ def run_general_analysis(
         if expert_filter:
             cases = {k: v for k, v in cases.items() if primary_expert(v) in expert_filter}
     ai_results, ai_errors = ({}, {}) if unit == "task" else analyze_cases(
-        cases, config, ai_settings, progress
+        cases, config, ai_settings, progress, force=force_ai
     )
     scores = score_all(cases, config, ai_results, unit=unit)
     general = PeriodResult(cases=cases, scores=scores, ai_errors=ai_errors)

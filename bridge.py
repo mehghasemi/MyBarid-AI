@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ai.providers import AISettings
+from ai.analyzer import is_case_ai_analyzed
 from analysis.timeline import build_timeline
 from config.criteria_config import Category, Criterion, CriteriaConfig, load_criteria_config, save_criteria_config
 import webview
@@ -491,7 +492,7 @@ class Api:
 
     def start_analysis(self, p1_start: str = "", p1_end: str = "", p2_start: str = "",
                         p2_end: str = "", expert_group: str | None = None,
-                        mode: str = "comparison") -> dict:
+                        mode: str = "comparison", force_ai: bool = False) -> dict:
         if not self.dataset:
             return {"ok": False, "error": "ابتدا فایل‌های Notes و Tasks را بارگذاری کنید."}
         if mode not in {"comparison", "general"}:
@@ -528,14 +529,14 @@ class Api:
                            "error": None, "generation": generation, "mode": mode}
         thread = threading.Thread(
             target=self._run_worker,
-            args=(dataset, config, ai_settings, period1, period2, expert_filter, unit, mode, generation),
+            args=(dataset, config, ai_settings, period1, period2, expert_filter, unit, mode, generation, force_ai),
             daemon=True,
         )
         thread.start()
         return {"ok": True, "generation": generation, "mode": mode}
 
     def _run_worker(self, dataset, config, ai_settings, period1, period2,
-                    expert_filter=None, unit="case", mode="comparison", generation=0):
+                    expert_filter=None, unit="case", mode="comparison", generation=0, force_ai=False):
         def progress_cb(label, current, total):
             with self._lock:
                 if generation != self._analysis_generation:
@@ -545,9 +546,9 @@ class Api:
         try:
             settings = ai_settings if ai_settings.enabled else AISettings(enabled=False)
             result = (
-                run_general_analysis(dataset, config, settings, progress_cb, expert_filter, unit)
+                run_general_analysis(dataset, config, settings, progress_cb, expert_filter, unit, force_ai)
                 if mode == "general" else
-                run_full_analysis(dataset, config, period1, period2, settings, progress_cb, expert_filter, unit)
+                run_full_analysis(dataset, config, period1, period2, settings, progress_cb, expert_filter, unit, force_ai)
             )
             with self._lock:
                 if generation != self._analysis_generation:
@@ -761,6 +762,9 @@ class Api:
             "scenario": case.scenario, "case_description": case.case_description,
             "timeline": timeline,
             "breakdown": _breakdown_to_dict(breakdown) if breakdown else None,
+            "ai_analyzed": bool(breakdown and breakdown.ai_used) or is_case_ai_analyzed(
+                case, self.config, self.ai_settings
+            ),
         }
 
     def get_cases_table(self, period: str, page: int, page_size: int,
@@ -793,6 +797,9 @@ class Api:
                 "objective_score": b.objective_score if b else None,
                 "ai_score": b.ai_score if b else None,
                 "final_score": b.final_score if b else None,
+                "ai_analyzed": bool(b and b.ai_used) or is_case_ai_analyzed(
+                    case, self.config, self.ai_settings
+                ),
             })
         rows.sort(key=lambda r: (r["final_score"] is None, r["final_score"] or 0))
         total = len(rows)

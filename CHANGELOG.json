@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.4",
+    "date": "2026-08-25",
+    "title": "Reuse successful AI analysis",
+    "changes": [
+      "Successful AI analysis is recognized per case and reused from the local cache.",
+      "The cases table shows whether AI analysis has already been completed.",
+      "Added an explicit Re-run AI action for cases that must be analyzed again."
+    ]
+  },
+  {
     "version": "1.9.3",
     "date": "2026-08-25",
     "title": "پایداری تحلیل AI در برابر پاسخ نامعتبر",
