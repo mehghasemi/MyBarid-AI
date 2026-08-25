@@ -31,6 +31,7 @@ Thumbs.db
 /build/
 /dist/
 MyBarid-AI.exe
+/MyBarid-AI-Portable/
 
 # کلید و اسرار (هرگز نباید Commit شوند)
 *.env

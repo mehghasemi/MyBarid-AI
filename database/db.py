@@ -16,9 +16,10 @@ import sys
 from pathlib import Path
 
 APP_NAME = "CRMQualityReviewer"
+PORTABLE_DIR_NAME = "MyBarid-AI-Portable"
 
 
-def app_data_dir() -> Path:
+def _legacy_app_data_dir() -> Path:
     if sys.platform == "win32":
         base = Path(os.environ.get("LOCALAPPDATA", str(Path.home())))
     else:
@@ -26,6 +27,43 @@ def app_data_dir() -> Path:
     d = base / APP_NAME
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def _portable_app_data_dir() -> Path:
+    override = os.environ.get("MYBARID_PORTABLE_DIR")
+    if override:
+        root = Path(override)
+    elif getattr(sys, "frozen", False):
+        root = Path(sys.executable).resolve().parent
+    else:
+        root = Path(__file__).resolve().parent.parent / PORTABLE_DIR_NAME
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def app_data_dir() -> Path:
+    """Return the portable data directory used by this installation.
+
+    Existing AppData settings are migrated once, without deleting the
+    original files. This keeps upgrades safe while making the EXE folder
+    self-contained for transfer.
+    """
+    portable = _portable_app_data_dir()
+    marker = portable / ".migrated-from-appdata"
+    legacy = _legacy_app_data_dir()
+    if not marker.exists() and legacy.resolve() != portable.resolve():
+        import shutil
+
+        for name in ("app.db", "api-key.bin", "criteria_config.json"):
+            source = legacy / name
+            target = portable / name
+            if source.exists() and not target.exists():
+                try:
+                    shutil.copy2(source, target)
+                except OSError:
+                    pass
+        marker.write_text("migrated\n", encoding="utf-8")
+    return portable
 
 
 DB_PATH = app_data_dir() / "app.db"
