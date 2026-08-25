@@ -15,13 +15,14 @@
     </div>
 
     <div class="module-switcher" aria-label="ماژول‌های سامانه">
-      <div class="module-caption">ماژول‌های سامانه</div>
+      <div class="module-caption">انتخاب ماژول</div>
       <button type="button" class="module-card active" data-module="crm-quality">
         <span class="module-icon">⚖️</span>
         <span class="module-copy">
           <strong>ارزیابی کیفیت CRM</strong>
           <small>ماژول فعال</small>
         </span>
+        <span class="module-chevron">‹</span>
       </button>
       <button type="button" class="module-card planned" data-module="project-management" title="این ماژول در دست توسعه است" aria-pressed="false">
         <span class="module-icon">📋</span>
@@ -29,11 +30,16 @@
           <strong>مدیریت پروژه‌ها</strong>
           <small>در دست توسعه</small>
         </span>
+        <span class="module-chevron">‹</span>
       </button>
     </div>
 
     <div class="module-menu-label">منوی ماژول فعال</div>
     <div class="module-menu active" data-module-menu="crm-quality">
+      <div class="module-menu-header">
+        <span class="module-menu-icon">⚖️</span>
+        <span><strong>ارزیابی کیفیت CRM</strong><small>ماژول فعال</small></span>
+      </div>
       <div class="nav-section-title">تحلیل و گزارش</div>
       <div class="nav-item" data-page="dashboard">📊 داشبورد مدیریتی</div>
       <div class="nav-item" data-page="general">🔎 تحلیل کلی</div>
@@ -53,6 +59,10 @@
       <div class="nav-item" data-page="ai-settings">🤖 تنظیمات AI</div>
     </div>
     <div class="module-menu" data-module-menu="project-management">
+      <div class="module-menu-header">
+        <span class="module-menu-icon">📋</span>
+        <span><strong>مدیریت پروژه‌ها</strong><small>در دست توسعه</small></span>
+      </div>
       <div class="nav-section-title">مدیریت پروژه‌ها</div>
       <div class="module-empty-state">قابلیت‌های مدیریت پروژه‌ها در دست توسعه است.</div>
     </div>
