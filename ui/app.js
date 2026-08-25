@@ -20,12 +20,49 @@ function api() { return window.pywebview.api; }
    ناوبری
 ------------------------------------------------------------------------ */
 document.querySelectorAll('.nav-item').forEach(el => {
+  const analysisPages = new Set(['dashboard', 'comparison', 'ranking', 'cases', 'suspicious', 'data-quality', 'mgmt-report', 'export']);
+  if (analysisPages.has(el.dataset.page)) el.classList.add('analysis-nav');
   el.addEventListener('click', () => showPage(el.dataset.page));
 });
 
 function showPage(name) {
+  const analysisPages = new Set(['dashboard', 'comparison', 'ranking', 'cases', 'suspicious', 'data-quality', 'mgmt-report', 'export']);
+  if (analysisPages.has(name) && !state.analysisDone) {
+    toast('ابتدا بازه را انتخاب و تحلیل را اجرا کنید.', 'error');
+    return;
+  }
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === name));
   document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === 'page-' + name));
+}
+
+function applyNavigationLabels() {
+  const labels = {
+    upload: '📂 بارگذاری داده‌ها',
+    periods: '🗓 بازه‌ها و اجرای تحلیل',
+    dashboard: '📊 داشبورد',
+    comparison: '🔁 مقایسه دوره‌ها',
+    ranking: '🏆 عملکرد کارشناسان',
+    cases: '🗂 جزئیات موارد / Taskها',
+    suspicious: '⚠️ موارد نیازمند بررسی',
+    'data-quality': '🩺 سلامت داده',
+    'mgmt-report': '📋 داشبورد مدیریتی',
+    export: '⬇️ خروجی و گزارش‌ها',
+    'expert-groups': '👥 گروه‌ها و تیم‌ها',
+    criteria: '⚖️ معیارها و نحوه محاسبه',
+    'ai-settings': '🤖 تنظیمات AI',
+  };
+  document.querySelectorAll('.nav-item').forEach(el => {
+    if (el.dataset.page === 'mgmt-report') {
+      el.hidden = true;
+      return;
+    }
+    const label = labels[el.dataset.page];
+    if (label) {
+      const badge = el.querySelector('.nav-badge');
+      el.textContent = label + ' ';
+      if (badge) el.appendChild(badge);
+    }
+  });
 }
 
 function toast(message, type) {
@@ -907,13 +944,19 @@ async function openCaseDetail(caseKey, period) {
   if (d.breakdown) {
     document.getElementById('case-score-summary').innerHTML = [
       ['Objective', d.breakdown.objective_score], ['AI', d.breakdown.ai_score], ['Final', d.breakdown.final_score],
+      ['Coverage', `${Math.round((d.breakdown.coverage || 0) * 100)}%`],
+      ['Confidence', d.breakdown.confidence || '—'],
       ['AI استفاده شده؟', d.breakdown.ai_used ? 'بله' : 'خیر'],
+      ['Outcome', d.breakdown.outcome_status || 'Unknown'],
+      ['Lifecycle', d.breakdown.lifecycle_status || '—'],
     ].map(([l, v]) => `<div class="card kpi"><div class="label">${l}</div><div class="value small">${typeof v === 'number' ? fmt(v) : v}</div></div>`).join('');
 
     document.getElementById('case-breakdown-body').innerHTML = d.breakdown.criteria.map(c => `
       <tr><td>${c.name_fa}</td><td>${c.category}</td><td><span class="type-tag">${c.type}</span></td>
         <td>${c.score === null ? '<span class="badge muted">N/A</span>' : `<span class="badge ${scoreBadgeClass(c.score)}">${fmt(c.score, 0)}</span>`}</td>
-        <td style="font-size:12px;color:var(--muted)">${escapeHtml(c.evidence || '')}</td></tr>`).join('');
+        <td>${Math.round((c.coverage || 0) * 100)}%</td>
+        <td><span class="badge ${c.confidence === 'high' ? 'good' : c.confidence === 'medium' ? 'warn' : 'muted'}">${c.confidence || 'low'}</span></td>
+        <td style="font-size:12px;color:var(--muted)">${escapeHtml(c.evidence || c.na_reason || '')}</td></tr>`).join('');
   } else {
     document.getElementById('case-score-summary').innerHTML = '';
     document.getElementById('case-breakdown-body').innerHTML = '<tr><td colspan="5" style="color:var(--muted)">برای این مورد امتیازی در دوره انتخاب‌شده محاسبه نشده است.</td></tr>';
@@ -943,6 +986,11 @@ function escapeHtml(text) {
 async function loadSuspicious() {
   const r = await api().get_suspicious();
   if (!r.ok) return;
+  const badge = document.getElementById('suspicious-badge');
+  if (badge) {
+    badge.textContent = String(r.rows.length);
+    badge.hidden = r.rows.length === 0;
+  }
   document.getElementById('suspicious-empty').style.display = 'none';
   document.getElementById('suspicious-content').style.display = 'block';
   document.getElementById('suspicious-body').innerHTML = r.rows.map(row => `
@@ -1037,6 +1085,7 @@ function initApp() {
   if (appInitialized) return;
   if (!apiMethodsReady()) return; // هنوز کامل آماده نشده؛ Poll ادامه پیدا می‌کند
   appInitialized = true;
+  applyNavigationLabels();
   const loadingOverlay = document.getElementById('boot-loading');
   if (loadingOverlay) loadingOverlay.style.display = 'none';
   loadCriteria();

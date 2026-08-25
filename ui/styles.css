@@ -85,6 +85,22 @@ html, body {
   opacity: 1;
   font-weight: 500;
 }
+.nav-item.analysis-nav {
+  opacity: .48;
+}
+.nav-badge {
+  display: inline-flex;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  margin-right: 6px;
+  border-radius: 9px;
+  background: #d9534f;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+}
 .nav-section-title {
   padding: 14px 18px 4px 18px;
   font-size: 11px;
