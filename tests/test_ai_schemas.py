@@ -58,3 +58,30 @@ def test_valid_na_ai_payload_is_preserved_for_case_breakdown():
         ["diagnosis"],
     )
     assert result == {"diagnosis": (None, "شواهد کافی وجود ندارد.")}
+
+
+def test_improvement_suggestions_are_limited_to_safe_proposals():
+    from ai.analyzer import _extract_improvement_suggestions
+
+    result = _extract_improvement_suggestions({
+        "improvement_suggestions": [
+            {
+                "type": "add_pattern",
+                "criterion_id": "notes_result_recorded",
+                "title": "الگوی نتیجه",
+                "problem": "واژه ثبت‌شده شناسایی نشده است.",
+                "suggestion": "افزودن الگوی «نتیجه اقدام ثبت شد».",
+                "evidence": "در Note کیس عبارت آمده است.",
+                "confidence": "high",
+            },
+            {
+                "type": "new_rule",
+                "criterion_id": "unknown_criterion",
+                "title": "نباید پذیرفته شود",
+                "suggestion": "x",
+                "evidence": "y",
+            },
+        ]
+    })
+    assert len(result) == 1
+    assert result[0]["status"] == "proposed"

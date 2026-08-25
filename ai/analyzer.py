@@ -13,6 +13,11 @@ from data.cleaner import CaseBundle
 from database import db
 
 MAX_RETRIES = 2
+IMPROVEMENT_CRITERIA = {
+    "notes_result_recorded", "task_presence_when_needed", "final_status_clear",
+    "solution_appropriateness", "problem_understanding",
+}
+IMPROVEMENT_TYPES = {"add_pattern", "activate_criterion", "new_rule"}
 
 
 def _case_signature(case: CaseBundle, ai_criteria, settings: AISettings) -> str:
@@ -53,6 +58,7 @@ def analyze_case(
             if cached:
                 cached_scores = _payload_to_scores(cached, criteria_ids)
                 if cached_scores:
+                    db.set_ai_suggestions(sig, _extract_improvement_suggestions(cached))
                     return cached_scores, None
                 # Cache قدیمی/ناقص نباید به‌عنوان تحلیل موفق تلقی شود.
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
@@ -97,6 +103,7 @@ def analyze_case(
                 continue
             if use_cache:
                 db.set_ai_cache(sig, payload)
+            db.set_ai_suggestions(sig, _extract_improvement_suggestions(payload))
             return scores, None
         except (AttributeError, KeyError, TypeError, ValueError, IndexError) as exc:
             last_error = f"ساختار امتیازهای AI قابل استفاده نبود: {exc}"
@@ -150,6 +157,38 @@ def _payload_to_scores(
         elif isinstance(scores.get(cid), (int, float)):
             result[cid] = (float(scores[cid]), str(evidence.get(cid, "")))
     return result
+
+
+def _extract_improvement_suggestions(payload: dict) -> list[dict]:
+    raw = payload.get("improvement_suggestions")
+    if not isinstance(raw, list):
+        return []
+    result = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        suggestion_type = str(item.get("type", "")).strip()
+        criterion_id = str(item.get("criterion_id", "")).strip()
+        confidence = str(item.get("confidence", "low")).strip().lower()
+        if suggestion_type not in IMPROVEMENT_TYPES:
+            continue
+        if criterion_id not in IMPROVEMENT_CRITERIA:
+            continue
+        if confidence not in {"low", "medium", "high"}:
+            confidence = "low"
+        fields = {
+            "type": suggestion_type,
+            "criterion_id": criterion_id,
+            "title": str(item.get("title", "")).strip(),
+            "problem": str(item.get("problem", "")).strip(),
+            "suggestion": str(item.get("suggestion", "")).strip(),
+            "evidence": str(item.get("evidence", "")).strip(),
+            "confidence": confidence,
+            "status": "proposed",
+        }
+        if fields["title"] and fields["suggestion"] and fields["evidence"]:
+            result.append(fields)
+    return result[:10]
 
 
 def _format_evidence(evidence, source_events) -> str:

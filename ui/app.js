@@ -1128,6 +1128,7 @@ async function openCaseDetail(caseKey, period) {
     `مشتری: ${d.customer || '—'} | Owner: ${d.owner || '—'} | سرویس: ${d.service || '—'} | وضعیت: ${d.status || '—'} / ${d.status_reason || ''}`;
 
   renderCaseAiActions(caseKey, d.ai_analyzed);
+  renderCaseAiSuggestions(d.improvement_suggestions || []);
   const scenarioBox = document.getElementById('case-detail-scenario-desc');
   let scenarioHtml = '';
   if (d.scenario && d.scenario.trim()) {
@@ -1201,6 +1202,7 @@ async function runSingleCaseAi(caseKey, force = false) {
     toast('بررسی AI این کیس با موفقیت انجام شد', 'success');
     const detail = await api().get_case_detail(caseKey, 'all');
     renderCaseAiActions(caseKey, detail.ai_analyzed);
+    renderCaseAiSuggestions(detail.improvement_suggestions || []);
     if (detail.breakdown) renderCaseBreakdown(detail.breakdown);
     refreshAllReports();
   };
@@ -1214,6 +1216,41 @@ function showCaseAiError(message) {
     box.style.display = 'block';
   }
   toast('بررسی AI انجام نشد؛ جزئیات در پنجره کیس نمایش داده شد', 'error');
+}
+
+function renderCaseAiSuggestions(items) {
+  const box = document.getElementById('case-ai-suggestions');
+  if (!box) return;
+  if (!items || !items.length) {
+    box.innerHTML = '';
+    return;
+  }
+  const typeNames = {
+    add_pattern: 'افزودن واژه/الگو به Rule موجود',
+    activate_criterion: 'فعال‌سازی معیار برای نوع Case/Service',
+    new_rule: 'پیشنهاد Rule جدید',
+  };
+  box.innerHTML = `
+    <div class="card" style="border-right:4px solid var(--accent);padding:12px">
+      <div style="font-weight:700;margin-bottom:8px">پیشنهادهای بهبود معیارها</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+        این موارد فقط پیشنهاد AI هستند و هیچ Rule یا امتیازی را خودکار تغییر نمی‌دهند.
+      </div>
+      ${items.map(item => `
+        <div style="padding:9px 0;border-top:1px solid var(--border)">
+          <div style="font-weight:600">${escapeHtml(item.title)}
+            <span class="badge muted">${escapeHtml(typeNames[item.type] || item.type)}</span>
+          </div>
+          <div style="font-size:12px;margin-top:4px">
+            معیار: ${escapeHtml(item.criterion_id)} — اعتماد: ${escapeHtml(item.confidence || 'low')}
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">
+            مشکل: ${escapeHtml(item.problem)}<br>
+            پیشنهاد: ${escapeHtml(item.suggestion)}<br>
+            شواهد: ${escapeHtml(item.evidence)}
+          </div>
+        </div>`).join('')}
+    </div>`;
 }
 
 function renderCaseBreakdown(breakdown) {

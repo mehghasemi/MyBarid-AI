@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ai.providers import AISettings
-from ai.analyzer import analyze_case, is_case_ai_analyzed
+from ai.analyzer import analyze_case, is_case_ai_analyzed, _case_signature
 from analysis.timeline import build_timeline
 from config.criteria_config import Category, Criterion, CriteriaConfig, load_criteria_config, save_criteria_config
 import webview
@@ -766,6 +766,14 @@ class Api:
             "breakdown": _breakdown_to_dict(breakdown) if breakdown else None,
             "ai_analyzed": bool(breakdown and breakdown.ai_used) or is_case_ai_analyzed(
                 case, self.config, self.ai_settings
+            ),
+            "improvement_suggestions": db.get_ai_suggestions(
+                _case_signature(
+                    case,
+                    [c for _, c in self.config.active_criteria()
+                     if c.evaluation_type in ("AI", "HYBRID")],
+                    self.ai_settings,
+                )
             ),
         }
 

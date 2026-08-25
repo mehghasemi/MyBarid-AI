@@ -31,11 +31,33 @@ Return JSON only in this shape:
       "na_reason": "required only when score is null"
     }}
   }},
-  "confidence": "low|medium|high"
+  "confidence": "low|medium|high",
+  "improvement_suggestions": []
 }}
 
 Criteria:
 {criteria_list}
+
+After the criteria, optionally return improvement suggestions based only on
+repeated or concrete evidence in this Case. Suggestions are proposals only;
+never change a Rule or score. Use only these criterion IDs:
+notes_result_recorded, task_presence_when_needed, final_status_clear,
+solution_appropriateness, problem_understanding.
+Allowed suggestion types:
+add_pattern, activate_criterion, new_rule.
+Return an empty array when there is no reliable suggestion. When suggestions
+exist, replace the empty array with:
+[
+  {{
+    "type": "add_pattern|activate_criterion|new_rule",
+    "criterion_id": "one allowed ID",
+    "title": "short title",
+    "problem": "what is missing or inconsistent",
+    "suggestion": "specific proposed change",
+    "evidence": "case event evidence",
+    "confidence": "low|medium|high"
+  }}
+]
 """
 
 

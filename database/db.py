@@ -90,6 +90,11 @@ def init_db() -> None:
                 payload TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS ai_improvement_suggestions (
+                signature TEXT PRIMARY KEY,
+                payload TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
             """
         )
         conn.commit()
@@ -151,6 +156,40 @@ def clear_ai_cache() -> None:
     conn = get_connection()
     try:
         conn.execute("DELETE FROM ai_cache")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_ai_suggestions(signature: str) -> list[dict]:
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT payload FROM ai_improvement_suggestions WHERE signature = ?",
+            (signature,),
+        ).fetchone()
+        if not row:
+            return []
+        payload = json.loads(row["payload"])
+        return payload if isinstance(payload, list) else []
+    except (json.JSONDecodeError, TypeError):
+        return []
+    finally:
+        conn.close()
+
+
+def set_ai_suggestions(signature: str, suggestions: list[dict]) -> None:
+    import datetime
+
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO ai_improvement_suggestions(signature, payload, created_at) "
+            "VALUES (?, ?, ?) ON CONFLICT(signature) DO UPDATE SET "
+            "payload=excluded.payload, created_at=excluded.created_at",
+            (signature, json.dumps(suggestions, ensure_ascii=False),
+             datetime.datetime.now().isoformat()),
+        )
         conn.commit()
     finally:
         conn.close()

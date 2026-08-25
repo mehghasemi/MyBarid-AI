@@ -106,3 +106,24 @@ Status:
 ```
 
 `score=null` یک وضعیت معتبر است و نباید در UI به‌عنوان خطای سرویس تفسیر شود.
+## پیشنهادهای بهبود معیار
+
+پس از تحلیل موفق، `get_case_detail` فیلد `improvement_suggestions` را نیز
+برمی‌گرداند. هر پیشنهاد فقط وضعیت `proposed` دارد و اعمال خودکار ندارد:
+
+```json
+{
+  "type": "add_pattern|activate_criterion|new_rule",
+  "criterion_id": "notes_result_recorded",
+  "title": "عنوان کوتاه",
+  "problem": "شرح مشکل",
+  "suggestion": "تغییر پیشنهادی",
+  "evidence": "شاهد Case",
+  "confidence": "low|medium|high",
+  "status": "proposed"
+}
+```
+
+معیارهای مجاز:
+`notes_result_recorded`, `task_presence_when_needed`, `final_status_clear`,
+`solution_appropriateness`, `problem_understanding`.
