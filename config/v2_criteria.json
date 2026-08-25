@@ -1,0 +1,266 @@
+{
+  "objective_ai_ratio": {
+    "objective": 0.45,
+    "ai": 0.55
+  },
+  "categories": [
+    {
+      "id": "correct_diagnosis_action",
+      "name_fa": "تشخیص و اقدام صحیح",
+      "layer": "performance",
+      "weight": 30,
+      "criteria": [
+        {
+          "id": "problem_understanding",
+          "name_fa": "درک و تشخیص صحیح مسئله",
+          "description_fa": "آیا کارشناس مسئله مطرح‌شده را درست فهمیده و تشخیص داده است؟",
+          "weight": 16,
+          "active": true,
+          "evaluation_type": "AI",
+          "unit": "case",
+          "layer": "performance",
+          "na_policy": "exclude"
+        },
+        {
+          "id": "solution_appropriateness",
+          "name_fa": "تناسب و منطقی بودن راهکار",
+          "description_fa": "آیا اقدام انجام‌شده با مسئله و شواهد Case تناسب دارد؟",
+          "weight": 14,
+          "active": true,
+          "evaluation_type": "AI",
+          "unit": "case",
+          "layer": "performance",
+          "na_policy": "exclude"
+        }
+      ]
+    },
+    {
+      "id": "customer_outcome_contribution",
+      "name_fa": "اثر اقدام بر نتیجه مشتری",
+      "layer": "performance",
+      "weight": 25,
+      "criteria": [
+        {
+          "id": "customer_interaction_quality",
+          "name_fa": "کیفیت تعامل با مشتری",
+          "description_fa": "حرفه‌ای، شفاف و متناسب بودن پاسخ‌ها و تعامل با مشتری.",
+          "weight": 10,
+          "active": true,
+          "evaluation_type": "AI",
+          "unit": "case",
+          "layer": "performance",
+          "na_policy": "exclude"
+        },
+        {
+          "id": "conclusion_adequacy",
+          "name_fa": "کفایت نتیجه‌گیری",
+          "description_fa": "کامل و قابل دفاع بودن جمع‌بندی نهایی Case.",
+          "weight": 8,
+          "active": true,
+          "evaluation_type": "AI",
+          "unit": "case",
+          "layer": "performance",
+          "na_policy": "exclude"
+        },
+        {
+          "id": "final_status_clear",
+          "name_fa": "شفافیت وضعیت نهایی",
+          "description_fa": "هم‌خوانی وضعیت نهایی با آخرین نتیجه ثبت‌شده.",
+          "weight": 7,
+          "active": true,
+          "evaluation_type": "RULE",
+          "unit": "case",
+          "layer": "performance",
+          "na_policy": "exclude"
+        }
+      ]
+    },
+    {
+      "id": "responsiveness",
+      "name_fa": "پاسخ‌گویی و زمان‌بندی",
+      "layer": "performance",
+      "weight": 15,
+      "criteria": [
+        {
+          "id": "first_response_time",
+          "name_fa": "سرعت اولین اقدام",
+          "description_fa": "فاصله زمانی ایجاد Case تا اولین اقدام کارشناس.",
+          "weight": 8,
+          "active": true,
+          "evaluation_type": "RULE",
+          "unit": "case",
+          "layer": "performance",
+          "na_policy": "exclude"
+        },
+        {
+          "id": "followup_delay",
+          "name_fa": "رعایت زمان Follow-up",
+          "description_fa": "میزان رعایت زمان‌بندی پیگیری‌های برنامه‌ریزی‌شده.",
+          "weight": 4,
+          "active": true,
+          "evaluation_type": "RULE",
+          "unit": "case",
+          "layer": "performance",
+          "na_policy": "exclude"
+        },
+        {
+          "id": "due_date_compliance",
+          "name_fa": "رعایت Due Date",
+          "description_fa": "مقایسه زمان اقدام با موعد تعیین‌شده.",
+          "weight": 3,
+          "active": true,
+          "evaluation_type": "RULE",
+          "unit": "case",
+          "layer": "performance",
+          "na_policy": "exclude"
+        }
+      ]
+    },
+    {
+      "id": "ownership_followup",
+      "name_fa": "مالکیت و پیگیری",
+      "layer": "performance",
+      "weight": 15,
+      "criteria": [
+        {
+          "id": "task_presence_when_needed",
+          "name_fa": "ایجاد Task در زمان نیاز",
+          "description_fa": "برای Caseهای نیازمند اقدام مستمر، Task مرتبط ثبت شده باشد.",
+          "weight": 6,
+          "active": true,
+          "evaluation_type": "RULE",
+          "unit": "case",
+          "layer": "performance",
+          "na_policy": "exclude"
+        },
+        {
+          "id": "task_case_relation",
+          "name_fa": "ارتباط Task با Case",
+          "description_fa": "این شاخص فعلاً در امتیاز عملکرد دخالت ندارد و فقط برای سلامت داده نگه‌داری می‌شود.",
+          "weight": 0,
+          "active": false,
+          "evaluation_type": "RULE",
+          "unit": "case",
+          "layer": "data_quality",
+          "na_policy": "exclude"
+        },
+        {
+          "id": "task_std_followup_handled",
+          "name_fa": "مدیریت Follow-up Task",
+          "description_fa": "برای Task نیازمند پیگیری، تاریخ پیگیری بعدی ثبت شده باشد.",
+          "weight": 5,
+          "active": true,
+          "evaluation_type": "RULE",
+          "unit": "task",
+          "layer": "performance",
+          "na_policy": "exclude"
+        }
+      ]
+    },
+    {
+      "id": "documentation_sufficiency",
+      "name_fa": "کفایت مستندسازی",
+      "layer": "performance",
+      "weight": 15,
+      "criteria": [
+        {
+          "id": "notes_completeness",
+          "name_fa": "کامل بودن اطلاعات Note",
+          "description_fa": "Note شامل شرح مسئله، اقدام و نتیجه باشد.",
+          "weight": 7,
+          "active": true,
+          "evaluation_type": "RULE",
+          "unit": "case",
+          "layer": "performance",
+          "na_policy": "exclude"
+        },
+        {
+          "id": "notes_result_recorded",
+          "name_fa": "ثبت نتیجه اقدام",
+          "description_fa": "نتیجه یا وضعیت نهایی اقدام در متن ثبت شده باشد.",
+          "weight": 4,
+          "active": true,
+          "evaluation_type": "RULE",
+          "unit": "case",
+          "layer": "performance",
+          "na_policy": "exclude"
+        },
+        {
+          "id": "timeline_reconstructable",
+          "name_fa": "قابل بازسازی بودن Timeline",
+          "description_fa": "روند Case از روی رویدادهای ثبت‌شده قابل بازسازی باشد.",
+          "weight": 4,
+          "active": true,
+          "evaluation_type": "RULE",
+          "unit": "case",
+          "layer": "performance",
+          "na_policy": "exclude"
+        }
+      ]
+    },
+    {
+      "id": "data_quality",
+      "name_fa": "سلامت داده و کنترل کیفیت",
+      "layer": "data_quality",
+      "weight": 0,
+      "criteria": [
+        {
+          "id": "notes_no_duplication",
+          "name_fa": "عدم تکراری بودن اطلاعات",
+          "description_fa": "این شاخص در امتیاز عملکرد دخالت ندارد و فقط برای گزارش سلامت داده نگه‌داری می‌شود.",
+          "weight": 0,
+          "active": false,
+          "evaluation_type": "RULE",
+          "unit": "case",
+          "layer": "data_quality",
+          "na_policy": "exclude"
+        },
+        {
+          "id": "notes_writing_quality",
+          "name_fa": "کیفیت نگارشی Note",
+          "description_fa": "این شاخص فعلاً برای گزارش کیفیت داده غیرفعال است.",
+          "weight": 0,
+          "active": false,
+          "evaluation_type": "RULE",
+          "unit": "case",
+          "layer": "data_quality",
+          "na_policy": "exclude"
+        }
+      ]
+    }
+  ],
+  "data_health_checks": [
+    {
+      "id": "notes_without_description",
+      "name_fa": "Note بدون Description"
+    },
+    {
+      "id": "tasks_without_description",
+      "name_fa": "Task بدون Description"
+    },
+    {
+      "id": "cases_without_note",
+      "name_fa": "Case بدون Note"
+    },
+    {
+      "id": "cases_without_task",
+      "name_fa": "Case بدون Task"
+    },
+    {
+      "id": "duplicate_notes",
+      "name_fa": "Note تکراری"
+    },
+    {
+      "id": "duplicate_tasks",
+      "name_fa": "Task تکراری"
+    },
+    {
+      "id": "unmatched_tasks",
+      "name_fa": "Task بدون Case مرتبط"
+    },
+    {
+      "id": "unreasonable_timestamps",
+      "name_fa": "Timestamp غیرمنطقی"
+    }
+  ]
+}
