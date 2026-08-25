@@ -137,6 +137,36 @@ html, body {
   border-radius: 6px;
 }
 .app-version-btn:hover { background: var(--primary-light); text-decoration: underline; }
+.sidebar-version-btn {
+  align-self: stretch;
+  margin: 8px 18px 0;
+  color: #eaf1f8;
+  text-align: center;
+  background: rgba(255,255,255,.08);
+}
+.sidebar-version-btn:hover {
+  background: rgba(255,255,255,.16);
+  text-decoration: underline;
+}
+.dataset-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  margin: 0 0 16px;
+  padding: 9px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--muted);
+  box-shadow: 0 2px 8px rgba(31,39,51,.04);
+}
+.dataset-summary-label { font-size: 12.5px; }
+.dataset-summary strong {
+  color: var(--primary);
+  font-size: 17px;
+  font-weight: 700;
+}
 
 .modal-overlay {
   position: fixed;

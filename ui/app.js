@@ -244,8 +244,10 @@ async function doUpload() {
   }
   state.datasetLoaded = true;
   state.dateBounds = res.date_bounds;
+  document.getElementById('dataset-summary').style.display = 'flex';
+  document.getElementById('dataset-count').textContent = res.total_cases.toLocaleString('fa-IR');
   document.getElementById('dataset-status').textContent =
-    `${res.total_cases} مورد | داده بارگذاری شد`;
+    'داده بارگذاری شد';
 
   const s = (label, sm) => `
     <div class="card">
@@ -291,6 +293,8 @@ async function clearDataset() {
   document.getElementById('tasks-file-name').textContent = 'فایلی انتخاب نشده';
   document.getElementById('btn-upload').disabled = true;
   document.getElementById('upload-result').innerHTML = '';
+  document.getElementById('dataset-summary').style.display = 'none';
+  document.getElementById('dataset-count').textContent = '۰';
   document.getElementById('dataset-status').textContent = 'فایلی بارگذاری نشده است.';
   toast('داده پاک شد');
 }

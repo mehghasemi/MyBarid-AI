@@ -85,10 +85,13 @@ def analyze_case(
             continue
         try:
             scores = _payload_to_scores(payload, criteria_ids)
+            if not scores:
+                last_error = "پاسخ AI برای هیچ‌یک از معیارهای فعال، امتیاز معتبر برنگرداند."
+                continue
             if use_cache:
                 db.set_ai_cache(sig, payload)
             return scores, None
-        except (KeyError, TypeError, ValueError) as exc:
+        except (AttributeError, KeyError, TypeError, ValueError, IndexError) as exc:
             last_error = f"ساختار امتیازهای AI قابل استفاده نبود: {exc}"
             continue
 
@@ -115,29 +118,25 @@ def is_case_ai_analyzed(
 
 
 def _payload_to_scores(payload: dict, criteria_ids: list[str]) -> dict[str, tuple[float, str]]:
+    if not isinstance(payload, dict):
+        return {}
     criteria = payload.get("criteria")
     scores = payload.get("scores")
     evidence = payload.get("evidence")
     criteria = criteria if isinstance(criteria, dict) else {}
     scores = scores if isinstance(scores, dict) else {}
     evidence = evidence if isinstance(evidence, dict) else {}
-    return {
-        cid: (
-            float(criteria[cid]["score"]) if (
-                cid in criteria and isinstance(criteria[cid], dict)
-            ) else float(scores[cid]),
-            _format_evidence(
-                criteria[cid].get("evidence", "") if isinstance(criteria.get(cid), dict) else "",
-                criteria[cid].get("source_events", []) if isinstance(criteria.get(cid), dict) else [],
-            ) if cid in criteria else str(evidence.get(cid, "")),
-        )
-        for cid in criteria_ids
-        if (
-            (cid in criteria and isinstance(criteria[cid], dict)
-             and isinstance(criteria[cid].get("score"), (int, float)))
-            or (cid in scores and isinstance(scores[cid], (int, float)))
-        )
-    }
+    result = {}
+    for cid in criteria_ids:
+        item = criteria.get(cid)
+        if isinstance(item, dict) and isinstance(item.get("score"), (int, float)):
+            result[cid] = (
+                float(item["score"]),
+                _format_evidence(item.get("evidence", ""), item.get("source_events", [])),
+            )
+        elif isinstance(scores.get(cid), (int, float)):
+            result[cid] = (float(scores[cid]), str(evidence.get(cid, "")))
+    return result
 
 
 def _format_evidence(evidence, source_events) -> str:

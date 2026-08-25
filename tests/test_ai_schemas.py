@@ -41,3 +41,10 @@ def test_ai_schema_accepts_explicit_na():
 
 def test_extract_json_rejects_non_object():
     assert extract_json("[1, 2]") is None
+
+
+def test_malformed_ai_payload_does_not_raise():
+    from ai.analyzer import _payload_to_scores
+
+    assert _payload_to_scores({"criteria": None}, ["diagnosis"]) == {}
+    assert _payload_to_scores({}, ["diagnosis"]) == {}
