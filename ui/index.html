@@ -10,11 +10,30 @@
 <div id="app">
 
   <div id="sidebar">
-    <div class="brand">ارزیابی کیفیت موارد CRM
-      <small>برید سامانه نوین</small>
+    <div class="brand">سامانه نوین
+      <small>پلتفرم مدیریت و ارزیابی</small>
     </div>
 
-    <div class="nav-section-title">تحلیل</div>
+    <div class="module-switcher" aria-label="ماژول‌های سامانه">
+      <div class="module-caption">ماژول‌های سامانه</div>
+      <button type="button" class="module-card active" data-module="crm-quality">
+        <span class="module-icon">⚖️</span>
+        <span class="module-copy">
+          <strong>ارزیابی کیفیت CRM</strong>
+          <small>ماژول فعال</small>
+        </span>
+      </button>
+      <button type="button" class="module-card planned" data-module="project-management" title="این ماژول در دست توسعه است">
+        <span class="module-icon">📋</span>
+        <span class="module-copy">
+          <strong>مدیریت پروژه‌ها</strong>
+          <small>در دست توسعه</small>
+        </span>
+      </button>
+    </div>
+
+    <div class="module-menu-label">منوی ماژول فعال</div>
+    <div class="nav-section-title">تحلیل و گزارش</div>
     <div class="nav-item" data-page="dashboard">📊 داشبورد مدیریتی</div>
     <div class="nav-item" data-page="general">🔎 تحلیل کلی</div>
     <div class="nav-item" data-page="comparison">🔁 مقایسه دو دوره</div>

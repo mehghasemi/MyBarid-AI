@@ -30,6 +30,20 @@ document.querySelectorAll('.nav-item').forEach(el => {
   el.addEventListener('click', () => showPage(el.dataset.page));
 });
 
+document.querySelectorAll('.module-card').forEach(el => {
+  el.addEventListener('click', () => {
+    // هر ماژول آینده می‌تواند با class="planned" بدون تغییر منطق ناوبری
+    // تا زمان آماده‌شدن قابلیت‌ها در فهرست نمایش داده شود.
+    if (el.classList.contains('planned')) {
+      toast(el.title || 'این ماژول در دست توسعه است.');
+      return;
+    }
+    document.querySelectorAll('.module-card').forEach(card => {
+      card.classList.toggle('active', card === el);
+    });
+  });
+});
+
 function showPage(name) {
   const analysisPages = new Set(['dashboard', 'general', 'comparison', 'ranking', 'cases', 'suspicious', 'data-quality', 'mgmt-report', 'export']);
   if (analysisPages.has(name) && !state.analysisDone) {
