@@ -26,8 +26,16 @@
 ## انتخاب مستندات بر اساس کار
 
 - معماری و وابستگی‌ها: `docs/architecture.md`
+- نمای کلی و قابلیت‌ها: `docs/system-overview.md`
+- ساختار Repository: `docs/repository-structure.md`
 - API و خروجی‌های UI: `docs/api-contract.md`
 - Excel، Case، Score و Cache: `docs/data-model.md`
+- UI و صفحات: `docs/ui.md`
+- Workflowها: `docs/workflows.md`
+- خطا و Logging: `docs/error-handling.md`
+- Configuration و Dependencyها: `docs/configuration.md`
+- اجرا و Build: `docs/deployment.md`
+- سناریوهای واقعی: `docs/scenarios.md`
 - تصمیم‌های قبلی: `docs/decisions.md`
 - روش توسعه، تست و Build: `docs/development.md`
 - فهرست مستندات و قانون به‌روزرسانی: `docs/README.md`

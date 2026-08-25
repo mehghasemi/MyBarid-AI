@@ -75,8 +75,9 @@ AI اختیاری است. نبود شواهد معتبر باید به N/A من�
 - `config/v2_criteria.json`: تنظیمات پیش‌فرض معیارها و Profileها.
 - `config/criteria_config.py`: مدل و منطق انتخاب Profile.
 - `config/criteria_guides.json`: راهنمای قابل نمایش معیارها.
-- تنظیمات کاربر در `%LOCALAPPDATA%\CRMQualityReviewer\criteria_config.json`
-  ذخیره می‌شود و بر فایل پیش‌فرض غلبه دارد.
+- در نسخه قابل‌انتقال، تنظیمات کاربر کنار EXE در
+  `MyBarid-AI-Portable` ذخیره می‌شود و بر فایل پیش‌فرض غلبه دارد.
+- مسیر قدیمی `%LOCALAPPDATA%\CRMQualityReviewer` فقط منبع Migration اولیه است.
 
 ### Persistence
 
