@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from analysis.rules import RESULT_KEYWORDS, _contains_any, _staff_notes, _staff_text
@@ -12,6 +13,18 @@ class SuspiciousCase:
     case_number: str | None
     case_title: str | None
     reasons: list[str]
+
+
+def normalize_reason(reason: str) -> str:
+    """Return the stable filter key/label for a suspicious-case reason.
+
+    Details that vary per case, such as the measured number of days, must not
+    create separate filter options for the same rule.
+    """
+    text = " ".join((reason or "").split())
+    text = re.sub(r"\s*\(\s*\d+\s*روز\s*\)", "", text)
+    text = re.sub(r"\s*\(\s*\d+\s*days?\s*\)", "", text, flags=re.IGNORECASE)
+    return text.strip()
 
 
 def find_suspicious_cases(cases: dict[str, CaseBundle]) -> list[SuspiciousCase]:

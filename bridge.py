@@ -755,6 +755,7 @@ class Api:
         if not self.result:
             return {"ok": False}
         from analysis.experts import primary_expert
+        from analysis.suspicious import normalize_reason
         all_rows = self.result["suspicious"]
         source_result = self.result.get("general")
         source_cases = source_result.cases if source_result else (
@@ -771,10 +772,14 @@ class Api:
                     or (self.dataset.cases.get(s.case_key) if self.dataset else None)
                 ) == expert_filter
             ))
-            and (not reason_filter or any(reason in reason_filter for reason in s.reasons))
+            and (not reason_filter or any(
+                normalize_reason(reason) in reason_filter for reason in s.reasons
+            ))
         ]
         experts = sorted({primary_expert(c) for c in source_cases.values()})
-        reasons = sorted({reason for s in all_rows for reason in s.reasons})
+        reasons = sorted({
+            normalize_reason(reason) for s in all_rows for reason in s.reasons
+        })
         return {"ok": True, "rows": rows, "experts": experts, "reasons": reasons,
                 "unit": self.result.get("unit", "case")}
 

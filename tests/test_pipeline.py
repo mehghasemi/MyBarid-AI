@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from analysis.experts import primary_expert
 from analysis.rules import notes_completeness, notes_result_recorded, task_presence_when_needed
+from analysis.suspicious import normalize_reason
 from analysis.scoring import score_case
 from config.criteria_config import load_criteria_config
 from data.cleaner import build_cases
@@ -142,6 +143,12 @@ def test_general_analysis_is_one_independent_result():
     assert result["mode"] == "general"
     assert "period1" not in result and "period2" not in result
     assert set(result["general"].cases) == {"CAS-1"}
+
+
+def test_suspicious_reason_normalization_removes_variable_day_count():
+    first = "فاصله زمانی غیرمنطقی (62 روز) بین دو رویداد متوالی"
+    second = "فاصله زمانی غیرمنطقی (74 روز) بین دو رویداد متوالی"
+    assert normalize_reason(first) == normalize_reason(second)
 
 
 # ------------------------------------------------------------ Experts ---
