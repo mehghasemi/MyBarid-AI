@@ -103,7 +103,15 @@ def test_notes_result_recorded_resolved_without_evidence():
     notes = [make_note(description="بررسی شد.", case_status="Resolved")]
     cases, _ = build_cases(notes, [])
     result = notes_result_recorded(cases["CAS-1"])
-    assert result.score == 40  # بسته شده ولی نتیجه صریح نیست
+    assert result.score == 20  # اقدام دیده می‌شود، اما نتیجه مستند نیست
+
+
+def test_closed_case_with_action_but_without_result_is_flagged():
+    notes = [make_note(description="اقدام برای startup انجام شد.", case_status="Closed")]
+    cases, _ = build_cases(notes, [])
+    result = notes_result_recorded(cases["CAS-1"])
+    assert result.score == 20
+    assert "result" in result.evidence
 
 
 # ------------------------------------------------------------ Experts ---

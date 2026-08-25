@@ -84,6 +84,11 @@ def notes_result_recorded(case: CaseBundle) -> RuleResult:
     if not notes:
         return RuleResult(None, "Note کارشناسی وجود ندارد.")
     text = _staff_text(case)
+    lifecycle = (case.status or "").strip().casefold()
+    if lifecycle in {"resolved", "closed"} and not _contains_any(text, RESULT_KEYWORDS):
+        if _contains_any(text, ACTION_KEYWORDS):
+            return RuleResult(20.0, "Action is recorded, but the actual result or impact is not recorded.")
+        return RuleResult(0.0, "Case is closed, but the actual action result is not recorded.")
     if _contains_any(text, RESULT_KEYWORDS):
         return RuleResult(100.0, "عبارتی دال بر ثبت نتیجه اقدام یافت شد.")
     if (case.status or "").strip().casefold() in {"resolved", "closed"}:
@@ -299,6 +304,9 @@ def final_status_clear(case: CaseBundle) -> RuleResult:
     last_kind, _, last_obj = events[-1]
     text = (last_obj.description or "") if last_kind == "note" else (last_obj.description or last_obj.subject or "")
     status_known = bool((case.status or "").strip())
+    all_staff_text = _staff_text(case)
+    if (case.status or "").strip().casefold() in {"resolved", "closed"} and not _contains_any(all_staff_text, RESULT_KEYWORDS):
+        return RuleResult(20.0, "Case is closed, but the actual result is not documented in the staff note; Status alone is insufficient.")
     if _contains_any(text, RESULT_KEYWORDS) and status_known:
         return RuleResult(100.0, "وضعیت نهایی هم در فیلد Status و هم در متن آخرین رویداد مشخص است.")
     if status_known:
