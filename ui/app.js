@@ -405,12 +405,13 @@ function renderCriteria() {
     const activeChips = active.map(c => `
       <span class="crit-chip ${c.evaluation_type === 'AI' ? 'ai-type' : ''}" title="${escapeHtml(c.description_fa)}">
         ${c.name_fa} (<span class="crit-weight" onclick="editCriterionWeight('${c.id}')">${fmtWeight(c.weight)}</span> امتیاز)
+        <button class="crit-guide-btn" title="راهنمای کامل معیار" onclick="showCriterionGuide('${c.id}')">?</button>
         <button class="crit-x" title="حذف از معیارهای فعال" onclick="onCriterionChange('${c.id}', false)">×</button>
       </span>`).join('');
 
     const inactiveChips = inactive.map(c => `
       <span class="crit-chip-inactive" title="${escapeHtml(c.description_fa)}" onclick="onCriterionChange('${c.id}', true)">
-        + ${c.name_fa}
+        + ${c.name_fa} <button class="crit-guide-btn" title="راهنمای کامل معیار" onclick="event.stopPropagation(); showCriterionGuide('${c.id}')">?</button>
       </span>`).join('');
 
     catDiv.innerHTML = `
@@ -423,6 +424,36 @@ function renderCriteria() {
     `;
     box.appendChild(catDiv);
   });
+}
+
+function showCriterionGuide(id) {
+  const cfg = state.criteriaConfig;
+  let criterion = null;
+  let category = null;
+  (cfg?.categories || []).forEach(cat => (cat.criteria || []).forEach(c => {
+    if (c.id === id) { criterion = c; category = cat; }
+  }));
+  if (!criterion) return;
+  const body = document.getElementById('criterion-guide-body');
+  const section = (title, value) => value
+    ? `<section class="guide-section"><h3>${title}</h3><p>${escapeHtml(value)}</p></section>`
+    : '';
+  body.innerHTML = `
+    <div class="guide-kicker">${escapeHtml(category?.name_fa || '')} · ${criterion.evaluation_type === 'AI' ? 'AI' : 'Rule-Based'} · وزن ${fmtWeight(criterion.weight)}</div>
+    <h2>${escapeHtml(criterion.name_fa)}</h2>
+    <p class="guide-description">${escapeHtml(criterion.description_fa || '')}</p>
+    ${section('هدف معیار', criterion.goal_fa)}
+    ${section('روش دقیق محاسبه', criterion.calculation_fa)}
+    ${section('تفسیر امتیاز', criterion.interpretation_fa)}
+    ${section('مثال', criterion.example_fa)}
+    ${section('محدودیت و موارد N/A', criterion.limitations_fa)}
+  `;
+  document.getElementById('criterion-guide-overlay').style.display = 'flex';
+}
+
+function closeCriterionGuide() {
+  const overlay = document.getElementById('criterion-guide-overlay');
+  if (overlay) overlay.style.display = 'none';
 }
 
 function fmtWeight(w) {

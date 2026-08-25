@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 DEFAULT_PATH = Path(__file__).parent / "v2_criteria.json"
+GUIDE_PATH = Path(__file__).parent / "criteria_guides.json"
 
 
 @dataclass
@@ -20,6 +21,11 @@ class Criterion:
     unit: str = "case"
     layer: str = "performance"
     na_policy: str = "exclude"
+    goal_fa: str = ""
+    calculation_fa: str = ""
+    interpretation_fa: str = ""
+    example_fa: str = ""
+    limitations_fa: str = ""
 
 
 @dataclass
@@ -88,6 +94,12 @@ class CriteriaConfig:
 def load_criteria_config(path: str | Path | None = None) -> CriteriaConfig:
     config_path = Path(path) if path else DEFAULT_PATH
     raw = json.loads(config_path.read_text(encoding="utf-8"))
+    guides = {}
+    if GUIDE_PATH.exists():
+        try:
+            guides = json.loads(GUIDE_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            guides = {}
     categories = [
         Category(
             id=category["id"],
@@ -107,6 +119,7 @@ def load_criteria_config(path: str | Path | None = None) -> CriteriaConfig:
                     unit=criterion.get("unit", "case"),
                     layer=criterion.get("layer", category.get("layer", "performance")),
                     na_policy=criterion.get("na_policy", "exclude"),
+                    **guides.get(criterion["id"], {}),
                 )
                 for criterion in category["criteria"]
             ],

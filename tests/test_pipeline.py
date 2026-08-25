@@ -149,3 +149,13 @@ def test_score_case_combines_ai_when_provided():
     assert breakdown.ai_score == 90.0
     assert breakdown.final_score is not None
     assert breakdown.final_score != breakdown.objective_score
+
+
+def test_active_criteria_have_audit_guides():
+    config = load_criteria_config()
+    missing = [
+        criterion.id
+        for _, criterion in config.active_criteria()
+        if not criterion.goal_fa or not criterion.calculation_fa or not criterion.interpretation_fa
+    ]
+    assert missing == []
