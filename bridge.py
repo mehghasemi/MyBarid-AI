@@ -65,6 +65,20 @@ class Api:
         self.status = {"running": False, "done": False, "stage": "", "current": 0, "total": 0, "error": None}
         self._lock = threading.Lock()
 
+    def __dir__(self):
+        """Expose only API methods to pywebview's bridge introspection.
+
+        Returning instance state (Dataset, CriteriaConfig, locks, etc.) from
+        dir() makes pywebview recursively inspect those object graphs while it
+        builds the JavaScript API. On some WebView2/pythonnet combinations
+        that recursion reaches Python's limit and the UI remains Not
+        Responding before pywebviewready.
+        """
+        return sorted(
+            name for name in dir(type(self))
+            if not name.startswith("_") and callable(getattr(type(self), name, None))
+        )
+
     def set_window(self, window):
         self.window = window
 
