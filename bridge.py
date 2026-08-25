@@ -22,6 +22,14 @@ from reports.excel_export import export_excel
 USER_CONFIG_PATH = db.app_data_dir() / "criteria_config.json"
 VERSION_FILE = Path(__file__).resolve().parent / "VERSION"
 CHANGELOG_FILE = Path(__file__).resolve().parent / "CHANGELOG.json"
+CURRENT_CRITERIA_CATEGORIES = {
+    "correct_diagnosis_action",
+    "customer_outcome_contribution",
+    "responsiveness",
+    "ownership_followup",
+    "documentation_sufficiency",
+    "data_quality",
+}
 
 
 def get_app_version() -> str:
@@ -77,7 +85,14 @@ class Api:
     def _load_config(self) -> CriteriaConfig:
         if USER_CONFIG_PATH.exists():
             try:
-                return load_criteria_config(USER_CONFIG_PATH)
+                stored = load_criteria_config(USER_CONFIG_PATH)
+                stored_categories = {category.id for category in stored.categories}
+                if CURRENT_CRITERIA_CATEGORIES.issubset(stored_categories):
+                    return stored
+                # Migrate the legacy built-in/user criteria to the current schema once.
+                current = load_criteria_config()
+                save_criteria_config(current, USER_CONFIG_PATH)
+                return current
             except Exception:
                 pass
         return load_criteria_config()

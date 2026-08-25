@@ -37,13 +37,19 @@ if not exist "%PYTHON_EXE%" (
 )
 
 echo.
-echo [2/3] Installing required packages for the current user...
-"%PYTHON_EXE%" -m pip install -r requirements.txt
+echo [2/3] Checking required packages...
+"%PYTHON_EXE%" -c "import openpyxl, webview" >nul 2>nul
 if errorlevel 1 (
-    echo [ERROR] Required packages could not be installed.
-    echo Check your internet connection or package access policy.
-    pause
-    exit /b 1
+    echo Required packages are missing. Installing for the current user...
+    "%PYTHON_EXE%" -m pip install --disable-pip-version-check --no-input -r requirements.txt
+    if errorlevel 1 (
+        echo [ERROR] Required packages could not be installed.
+        echo Check your internet connection or package access policy.
+        pause
+        exit /b 1
+    )
+) else (
+    echo Required packages are already installed.
 )
 
 echo.
