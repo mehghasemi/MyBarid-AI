@@ -18,7 +18,7 @@ if ($BuildExe -and $FromPortable) {
 if ($BuildExe) {
     Push-Location $projectRoot
     try {
-        & ".venv\Scripts\pyinstaller.exe" --noconfirm --clean "MyBarid-AI.spec"
+        & (Join-Path $projectRoot ".venv\Scripts\pyinstaller.exe") --noconfirm --clean (Join-Path $projectRoot "MyBarid-AI.spec")
         if ($LASTEXITCODE -ne 0) {
             throw "PyInstaller failed with exit code $LASTEXITCODE."
         }
