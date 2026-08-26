@@ -302,6 +302,28 @@ async function doUpload() {
   toast('فایل‌ها بارگذاری شدند', 'success');
 }
 
+async function autoLoadDefaultFiles() {
+  const box = document.getElementById('auto-input-info');
+  if (!box) return;
+  try {
+    const info = await api().get_auto_input_info();
+    box.innerHTML = `پوشه ورودی: <code>${escapeHtml(info.directory)}</code><br>
+      Notes: <code>notes.xlsx</code> — Tasks: <code>tasks.xlsx</code>`;
+    if (!info.notes_exists || !info.tasks_exists) {
+      box.innerHTML += '<br><span class="muted">هر دو فایل هنوز در پوشه قرار نگرفته‌اند.</span>';
+      return;
+    }
+    state.notesPath = info.notes_file;
+    state.tasksPath = info.tasks_file;
+    document.getElementById('notes-file-name').textContent = info.notes_file;
+    document.getElementById('tasks-file-name').textContent = info.tasks_file;
+    document.getElementById('btn-upload').disabled = false;
+    await doUpload();
+  } catch (e) {
+    box.innerHTML = `<span class="error-text">بررسی پوشه ورودی ناموفق بود: ${escapeHtml(String(e))}</span>`;
+  }
+}
+
 async function clearDataset() {
   await api().clear_dataset();
   state.datasetLoaded = false;
@@ -330,6 +352,7 @@ async function runAnalysis(forceAi = false) {
   state.analysisMode = mode;
   state.analysisDone = false;
   document.getElementById('btn-run').disabled = true;
+  document.getElementById('btn-cancel-analysis').style.display = 'inline-flex';
   document.getElementById('progress-area').style.display = 'block';
   document.getElementById('run-result').innerHTML = '';
 
@@ -337,9 +360,21 @@ async function runAnalysis(forceAi = false) {
   if (!res.ok) {
     toast(res.error, 'error');
     document.getElementById('btn-run').disabled = false;
+    document.getElementById('btn-cancel-analysis').style.display = 'none';
     return;
   }
   pollStatus();
+}
+
+async function cancelAnalysis() {
+  const res = await api().cancel_analysis();
+  if (!res.ok) {
+    toast(res.message || 'تحلیلی در حال اجرا نیست.', 'error');
+    return;
+  }
+  document.getElementById('btn-cancel-analysis').style.display = 'none';
+  document.getElementById('btn-run').disabled = false;
+  document.getElementById('run-result').innerHTML = '<div class="warn-box">تحلیل لغو شد و نتیجه ناقص نمایش داده نمی‌شود.</div>';
 }
 
 function toggleAnalysisMode() {
@@ -360,6 +395,13 @@ async function pollStatus() {
   if (status.error) {
     document.getElementById('run-result').innerHTML = `<div class="err-box">${status.error}</div>`;
     document.getElementById('btn-run').disabled = false;
+    document.getElementById('btn-cancel-analysis').style.display = 'none';
+    return;
+  }
+  if (status.cancelled) {
+    document.getElementById('run-result').innerHTML = '<div class="warn-box">تحلیل توسط کاربر لغو شد.</div>';
+    document.getElementById('btn-run').disabled = false;
+    document.getElementById('btn-cancel-analysis').style.display = 'none';
     return;
   }
   if (status.running) {
@@ -370,6 +412,7 @@ async function pollStatus() {
     state.analysisDone = true;
     document.getElementById('run-result').innerHTML = `<div class="ok-box">تحلیل با موفقیت انجام شد.</div>`;
     document.getElementById('btn-run').disabled = false;
+    document.getElementById('btn-cancel-analysis').style.display = 'none';
     refreshAllReports();
   }
 }
@@ -1145,7 +1188,8 @@ async function openCaseDetail(caseKey, period) {
   document.getElementById('case-modal-overlay').style.display = 'flex';
   document.getElementById('case-detail-title').textContent = `${d.case_number || ''} — ${d.case_title || ''}`;
   document.getElementById('case-detail-meta').innerHTML =
-    `مشتری: ${d.customer || '—'} | Owner: ${d.owner || '—'} | سرویس: ${d.service || '—'} | وضعیت: ${d.status || '—'} / ${d.status_reason || ''}`;
+    `مشتری: ${d.customer || '—'} | Owner: ${d.owner || '—'} | سرویس: ${d.service || '—'} | وضعیت: ${d.status || '—'} / ${d.status_reason || ''}` +
+    (d.ai_analysis?.analyzed_at ? ` | آخرین تحلیل AI: ${dateDual(d.ai_analysis.analyzed_at)}` : '');
 
   renderCaseAiActions(caseKey, d.ai_analyzed);
   renderCaseAiSuggestions(d.improvement_suggestions || []);
@@ -1432,6 +1476,7 @@ function initApp() {
   loadCriteria();
   loadAiSettings();
   loadExpertGroupsSettings();
+  autoLoadDefaultFiles();
   buildJalaliPicker('p1-start-picker');
   buildJalaliPicker('p1-end-picker');
   buildJalaliPicker('p2-start-picker');

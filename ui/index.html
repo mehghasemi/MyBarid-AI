@@ -188,6 +188,13 @@
         <button class="btn" onclick="clearDataset()">پاک‌کردن داده بارگذاری‌شده</button>
       </div>
 
+      <div class="card auto-input-card" style="margin-top:16px">
+        <h3>بارگذاری خودکار هنگام اجرای برنامه</h3>
+        <p class="page-sub">دو فایل Excel با نام‌های ثابت را در پوشه زیر قرار دهید تا در شروع برنامه خودکار بارگذاری شوند.</p>
+        <div id="auto-input-info" class="muted-box">در حال بررسی پوشه ورودی...</div>
+        <button class="btn" style="margin-top:10px" onclick="autoLoadDefaultFiles()">بازخوانی فایل‌های ورودی</button>
+      </div>
+
       <div id="upload-result" style="margin-top:20px"></div>
     </section>
 
@@ -233,6 +240,7 @@
         </div>
         <button class="btn primary" id="btn-run" onclick="runAnalysis()">اجرای تحلیل</button>
         <button class="btn" id="btn-rerun-ai" onclick="runAnalysis(true)" title="تحلیل AI موارد را دوباره اجرا می‌کند">تحلیل مجدد AI</button>
+        <button class="btn danger" id="btn-cancel-analysis" onclick="cancelAnalysis()" style="display:none">لغو تحلیل</button>
         <div id="progress-area" style="margin-top:14px;display:none">
           <div id="progress-label" style="font-size:12.5px;color:var(--muted)"></div>
           <div class="progress-bar"><div id="progress-fill" style="width:0%"></div></div>

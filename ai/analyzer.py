@@ -20,6 +20,10 @@ IMPROVEMENT_CRITERIA = {
 IMPROVEMENT_TYPES = {"add_pattern", "activate_criterion", "new_rule"}
 
 
+class AnalysisCancelled(Exception):
+    """Raised when the user cancels a running dataset analysis."""
+
+
 def _case_signature(case: CaseBundle, ai_criteria, settings: AISettings) -> str:
     criteria_fingerprint = repr([
         (c.id, c.name_fa, c.evaluation_type, getattr(c, "prompt_fa", None),
@@ -43,13 +47,15 @@ def _case_signature(case: CaseBundle, ai_criteria, settings: AISettings) -> str:
 
 def analyze_case(
     case: CaseBundle, ai_criteria, settings: AISettings, use_cache: bool = True,
-    force: bool = False,
+    force: bool = False, cancel_check: Callable[[], None] | None = None,
 ) -> tuple[dict[str, tuple[float, str]], str | None]:
     """یک Case را تحلیل می‌کند. خروجی: (scores_by_criterion, error_message).
     اگر AI شکست بخورد، دیکشنری خالی برمی‌گردد و پیام خطا پر می‌شود؛ هرگز امتیاز جعلی تولید نمی‌شود."""
     criteria_ids = [c.id for c in ai_criteria]
     if not criteria_ids:
         return {}, None
+    if cancel_check:
+        cancel_check()
 
     sig = _case_signature(case, ai_criteria, settings)
     if use_cache and not force:
@@ -59,6 +65,9 @@ def analyze_case(
                 cached_scores = _payload_to_scores(cached, criteria_ids)
                 if cached_scores:
                     db.set_ai_suggestions(sig, _extract_improvement_suggestions(cached))
+                    db.record_ai_analysis(
+                        case.case_key, sig, settings.provider, settings.model, source="cache",
+                    )
                     return cached_scores, None
                 # Cache قدیمی/ناقص نباید به‌عنوان تحلیل موفق تلقی شود.
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
@@ -74,12 +83,18 @@ def analyze_case(
 
     last_error = None
     for attempt in range(MAX_RETRIES + 1):
+        if cancel_check:
+            cancel_check()
         try:
             raw = provider.complete(system, user, settings)
         except AIProviderError as exc:
             last_error = str(exc)
+            if cancel_check:
+                cancel_check()
             time.sleep(1.5 * (attempt + 1))
             continue
+        if cancel_check:
+            cancel_check()
         try:
             payload = extract_json(raw)
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
@@ -104,6 +119,9 @@ def analyze_case(
             if use_cache:
                 db.set_ai_cache(sig, payload)
             db.set_ai_suggestions(sig, _extract_improvement_suggestions(payload))
+            db.record_ai_analysis(
+                case.case_key, sig, settings.provider, settings.model, source="live",
+            )
             return scores, None
         except (AttributeError, KeyError, TypeError, ValueError, IndexError) as exc:
             last_error = f"ساختار امتیازهای AI قابل استفاده نبود: {exc}"
@@ -207,6 +225,7 @@ def analyze_cases(
     settings: AISettings,
     progress_cb: Callable[[int, int, str], None] | None = None,
     force: bool = False,
+    cancel_check: Callable[[], None] | None = None,
 ) -> tuple[dict[str, dict[str, tuple[float, str]]], dict[str, str]]:
     """تحلیل AI برای مجموعه‌ای از Caseها. اگر AI غیرفعال باشد، دیکشنری خالی برمی‌گردد
     و بقیه Pipeline بدون AI (فقط Rule-Based) ادامه پیدا می‌کند."""
@@ -219,10 +238,16 @@ def analyze_cases(
     items = list(cases.items())
     total = len(items)
     for i, (key, case) in enumerate(items):
+        if cancel_check:
+            cancel_check()
         if progress_cb:
             progress_cb(i, total, key)
         try:
-            scores, error = analyze_case(case, ai_criteria, settings, force=force)
+            scores, error = analyze_case(
+                case, ai_criteria, settings, force=force, cancel_check=cancel_check,
+            )
+        except AnalysisCancelled:
+            raise
         except Exception as exc:  # noqa: BLE001
             # One malformed provider/cache response must not stop all cases.
             scores, error = {}, f"خطای کنترل‌نشده AI برای این مورد: {exc}"

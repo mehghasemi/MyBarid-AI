@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ai.providers import AISettings
-from ai.analyzer import analyze_case, is_case_ai_analyzed, _case_signature
+from ai.analyzer import AnalysisCancelled, analyze_case, is_case_ai_analyzed, _case_signature
 from analysis.timeline import build_timeline
 from config.criteria_config import Category, Criterion, CriteriaConfig, load_criteria_config, save_criteria_config
 import webview
@@ -67,6 +67,7 @@ class Api:
         self.last_periods: tuple | None = None
         self.status = {"running": False, "done": False, "stage": "", "current": 0, "total": 0, "error": None}
         self._analysis_generation = 0
+        self._analysis_cancel_event: threading.Event | None = None
         self._case_ai_status: dict[str, dict] = {}
         self._lock = threading.Lock()
 
@@ -142,6 +143,33 @@ class Api:
             return None
         return result[0] if result else None
 
+    def get_auto_input_info(self) -> dict:
+        input_dir = db.app_data_dir() / "input"
+        return {
+            "ok": True,
+            "directory": str(input_dir),
+            "notes_file": str(input_dir / "notes.xlsx"),
+            "tasks_file": str(input_dir / "tasks.xlsx"),
+            "notes_exists": (input_dir / "notes.xlsx").exists(),
+            "tasks_exists": (input_dir / "tasks.xlsx").exists(),
+        }
+
+    def auto_upload_default_files(self) -> dict:
+        info = self.get_auto_input_info()
+        if not info["notes_exists"] or not info["tasks_exists"]:
+            return {
+                "ok": False,
+                "available": False,
+                "directory": info["directory"],
+                "notes_file": info["notes_file"],
+                "tasks_file": info["tasks_file"],
+                "error": "دو فایل notes.xlsx و tasks.xlsx در پوشه ورودی خودکار پیدا نشدند.",
+            }
+        result = self.upload(info["notes_file"], info["tasks_file"])
+        result["auto_loaded"] = result.get("ok", False)
+        result["directory"] = info["directory"]
+        return result
+
     def pick_save_path(self, suggested_name: str) -> str | None:
         if not self.window:
             return None
@@ -167,7 +195,7 @@ class Api:
         with self._lock:
             self._analysis_generation += 1
             self.result = None
-            self.status = {"running": False, "done": False, "stage": "", "current": 0, "total": 0, "error": None}
+            self.status = {"running": False, "done": False, "cancelled": False, "stage": "", "current": 0, "total": 0, "error": None}
         ns, ts = self.dataset.notes_summary, self.dataset.tasks_summary
         dates = [n.note_date for n in self.dataset.notes if n.note_date] + \
                 [t.created_on for t in self.dataset.tasks if t.created_on]
@@ -186,7 +214,9 @@ class Api:
             self._analysis_generation += 1
             self.dataset = None
             self.result = None
-            self.status = {"running": False, "done": False, "stage": "", "current": 0, "total": 0, "error": None}
+            if self._analysis_cancel_event:
+                self._analysis_cancel_event.set()
+            self.status = {"running": False, "done": False, "cancelled": False, "stage": "", "current": 0, "total": 0, "error": None}
         return {"ok": True}
 
     # -------------------------------------------------------- expert groups
@@ -523,45 +553,73 @@ class Api:
         with self._lock:
             self._analysis_generation += 1
             generation = self._analysis_generation
+            cancel_event = threading.Event()
+            self._analysis_cancel_event = cancel_event
             dataset = self.dataset
             config = copy.deepcopy(self.config)
             ai_settings = copy.deepcopy(self.ai_settings)
             self.result = None
-            self.status = {"running": True, "done": False, "stage": "شروع", "current": 0, "total": 0,
+            self.status = {"running": True, "done": False, "cancelled": False, "stage": "شروع", "current": 0, "total": 0,
                            "error": None, "generation": generation, "mode": mode}
         thread = threading.Thread(
             target=self._run_worker,
-            args=(dataset, config, ai_settings, period1, period2, expert_filter, unit, mode, generation, force_ai),
+            args=(dataset, config, ai_settings, period1, period2, expert_filter, unit, mode, generation, force_ai, cancel_event),
             daemon=True,
         )
         thread.start()
         return {"ok": True, "generation": generation, "mode": mode}
 
+    def cancel_analysis(self) -> dict:
+        with self._lock:
+            if not self.status.get("running"):
+                return {"ok": False, "cancelled": False, "message": "تحلیلی در حال اجرا نیست."}
+            if self._analysis_cancel_event:
+                self._analysis_cancel_event.set()
+            self.status.update({
+                "running": False, "done": False, "cancelled": True,
+                "stage": "تحلیل لغو شد", "error": None,
+            })
+        return {"ok": True, "cancelled": True}
+
     def _run_worker(self, dataset, config, ai_settings, period1, period2,
-                    expert_filter=None, unit="case", mode="comparison", generation=0, force_ai=False):
+                    expert_filter=None, unit="case", mode="comparison", generation=0,
+                    force_ai=False, cancel_event: threading.Event | None = None):
         def progress_cb(label, current, total):
             with self._lock:
                 if generation != self._analysis_generation:
                     return
+                if cancel_event and cancel_event.is_set():
+                    raise AnalysisCancelled()
                 self.status.update({"stage": label, "current": current, "total": total})
+
+        def cancel_check():
+            if cancel_event and cancel_event.is_set():
+                raise AnalysisCancelled()
 
         try:
             settings = ai_settings if ai_settings.enabled else AISettings(enabled=False)
             result = (
-                run_general_analysis(dataset, config, settings, progress_cb, expert_filter, unit, force_ai)
+                run_general_analysis(dataset, config, settings, progress_cb, expert_filter, unit, force_ai, cancel_check)
                 if mode == "general" else
-                run_full_analysis(dataset, config, period1, period2, settings, progress_cb, expert_filter, unit, force_ai)
+                run_full_analysis(dataset, config, period1, period2, settings, progress_cb, expert_filter, unit, force_ai, cancel_check)
             )
             with self._lock:
-                if generation != self._analysis_generation:
+                if generation != self._analysis_generation or (cancel_event and cancel_event.is_set()):
                     return
                 self.result = result
                 self.status.update({"running": False, "done": True, "stage": "پایان یافت"})
+        except AnalysisCancelled:
+            with self._lock:
+                if generation == self._analysis_generation and self.status.get("running"):
+                    self.status.update({
+                        "running": False, "done": False, "cancelled": True,
+                        "stage": "تحلیل لغو شد", "error": None,
+                    })
         except Exception as exc:  # noqa: BLE001
             traceback.print_exc()
             with self._lock:
                 if generation == self._analysis_generation:
-                    self.status.update({"running": False, "done": False, "error": str(exc)})
+                    self.status.update({"running": False, "done": False, "cancelled": False, "error": str(exc)})
 
     def get_status(self) -> dict:
         with self._lock:
@@ -766,6 +824,15 @@ class Api:
             "breakdown": _breakdown_to_dict(breakdown) if breakdown else None,
             "ai_analyzed": bool(breakdown and breakdown.ai_used) or is_case_ai_analyzed(
                 case, self.config, self.ai_settings
+            ),
+            "ai_analysis": db.get_latest_ai_analysis(
+                case.case_key,
+                _case_signature(
+                    case,
+                    [c for _, c in self.config.active_criteria()
+                     if c.evaluation_type in ("AI", "HYBRID")],
+                    self.ai_settings,
+                ),
             ),
             "improvement_suggestions": db.get_ai_suggestions(
                 _case_signature(

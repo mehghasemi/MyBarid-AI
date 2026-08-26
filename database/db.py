@@ -95,6 +95,19 @@ def init_db() -> None:
                 payload TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS ai_analysis_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                case_key TEXT NOT NULL,
+                signature TEXT NOT NULL,
+                analyzed_at TEXT NOT NULL,
+                provider TEXT,
+                model TEXT,
+                source TEXT NOT NULL DEFAULT 'live',
+                success INTEGER NOT NULL DEFAULT 1,
+                error TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_ai_analysis_history_case
+                ON ai_analysis_history(case_key, analyzed_at);
             """
         )
         conn.commit()
@@ -157,6 +170,58 @@ def clear_ai_cache() -> None:
     try:
         conn.execute("DELETE FROM ai_cache")
         conn.commit()
+    finally:
+        conn.close()
+
+
+def record_ai_analysis(
+    case_key: str, signature: str, provider: str, model: str,
+    source: str = "live", success: bool = True, error: str | None = None,
+    analyzed_at: str | None = None,
+) -> str:
+    from datetime import datetime, timezone
+
+    timestamp = analyzed_at or datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO ai_analysis_history
+                (case_key, signature, analyzed_at, provider, model, source, success, error)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (case_key, signature, timestamp, provider, model, source, int(success), error),
+        )
+        conn.commit()
+        return timestamp
+    finally:
+        conn.close()
+
+
+def get_latest_ai_analysis(case_key: str, signature: str | None = None) -> dict | None:
+    conn = get_connection()
+    try:
+        if signature:
+            row = conn.execute(
+                """
+                SELECT case_key, signature, analyzed_at, provider, model, source, success, error
+                FROM ai_analysis_history
+                WHERE case_key = ? AND signature = ?
+                ORDER BY analyzed_at DESC, id DESC LIMIT 1
+                """,
+                (case_key, signature),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT case_key, signature, analyzed_at, provider, model, source, success, error
+                FROM ai_analysis_history
+                WHERE case_key = ?
+                ORDER BY analyzed_at DESC, id DESC LIMIT 1
+                """,
+                (case_key,),
+            ).fetchone()
+        return dict(row) if row else None
     finally:
         conn.close()
 

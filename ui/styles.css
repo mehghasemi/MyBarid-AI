@@ -461,6 +461,10 @@ label.field-label { display:block; font-size: 12px; color: var(--muted); margin-
 .warn-box { background: #fdf2e2; border: 1px solid #f3dfb0; color: #7a5410; padding: 10px 14px; border-radius: 8px; font-size: 12.5px; margin-bottom: 10px; }
 .err-box { background: #fbe9e9; border: 1px solid #f0c2c2; color: #8a2626; padding: 10px 14px; border-radius: 8px; font-size: 12.5px; margin-bottom: 10px; }
 .ok-box { background: #e5f6ee; border: 1px solid #b9e6cf; color: #1e6b4a; padding: 10px 14px; border-radius: 8px; font-size: 12.5px; margin-bottom: 10px; }
+.muted-box { background: #f5f7fa; border: 1px solid var(--border); color: var(--muted); padding: 10px 14px; border-radius: 8px; font-size: 12px; line-height: 1.8; }
+.error-text { color: var(--bad); }
+.btn.danger { background: #fff; border-color: #e5a4a4; color: var(--bad); }
+.btn.danger:hover { background: #fbe9e9; }
 
 .score-pill { font-weight: 700; font-size: 15px; }
 .chip-list { display: flex; flex-wrap: wrap; gap: 6px; }
