@@ -260,7 +260,8 @@ async function initializeCaseSelection() {
   try {
     const res = await api().get_dataset_case_keys();
     if (!res.ok) throw new Error(res.error || 'دریافت موارد ناموفق بود');
-    state.selectedCaseKeys = new Set((res.keys || []).map(String));
+    // انتخاب پیش‌فرض عمداً خالی است؛ کاربر باید مشخص کند کدام موارد تحلیل شوند.
+    state.selectedCaseKeys = new Set();
     state.caseSelectionQuery = '';
     state.caseSelectionPage = 0;
     state.caseSelectionTotal = res.keys ? res.keys.length : 0;
