@@ -111,7 +111,11 @@ def run_period(
     # در حالت Task، AI فعلاً اجرا نمی‌شود (معیارهای Task مستقل همگی Rule-Based تعریف شده‌اند)
     ai_results, ai_errors = ({}, {}) if unit == "task" else analyze_cases(
         cases, config, ai_settings, progress_cb, force=force_ai, cancel_check=cancel_check)
+    if progress_cb:
+        progress_cb("محاسبه امتیازهای Rule-Based", 0, len(cases))
     scores = score_all(cases, config, ai_results, unit=unit)
+    if progress_cb:
+        progress_cb("محاسبه امتیازهای Rule-Based", len(cases), len(cases))
     return PeriodResult(cases=cases, scores=scores, ai_errors=ai_errors)
 
 
@@ -196,7 +200,11 @@ def run_general_analysis(
     ai_results, ai_errors = ({}, {}) if unit == "task" else analyze_cases(
         cases, config, ai_settings, progress, force=force_ai, cancel_check=cancel_check
     )
+    if progress_cb:
+        progress_cb("محاسبه امتیازهای Rule-Based", 0, len(cases))
     scores = score_all(cases, config, ai_results, unit=unit)
+    if progress_cb:
+        progress_cb("محاسبه امتیازهای Rule-Based", len(cases), len(cases))
     general = PeriodResult(cases=cases, scores=scores, ai_errors=ai_errors)
 
     def avg(values):
@@ -221,9 +229,23 @@ def run_general_analysis(
         "status": "تحلیل کلی",
     } for expert, stats in experts.items()]
     ranking.sort(key=lambda row: (row["score"] is None, -(row["score"] or 0)))
+    selected_case_ids = set(cases)
+    scoped_notes = [n for n in dataset.notes if n.case_key in selected_case_ids]
+    scoped_tasks = [
+        t for t in dataset.tasks
+        if any(id(t) == id(link.task) for c in cases.values() for link in c.task_links)
+    ]
+    scoped_unmatched = [
+        t for t in dataset.unmatched_tasks
+        if any(id(t) == id(link.task) for c in cases.values() for link in c.task_links)
+    ]
+    if progress_cb:
+        progress_cb("محاسبه سلامت داده انتخاب‌شده", 0, 1)
     health_checks, health_index = compute_data_health(
-        dataset.notes, dataset.tasks, dataset.cases, dataset.unmatched_tasks
+        scoped_notes, scoped_tasks, cases, scoped_unmatched
     )
+    if progress_cb:
+        progress_cb("محاسبه سلامت داده انتخاب‌شده", 1, 1)
     suspicious_pool = (
         build_task_pseudo_cases([
             t for t in dataset.tasks
