@@ -87,6 +87,7 @@ def _display(row: dict, *names: str):
 def _powershell_get_json(url: str, username: str = "", password: str = "") -> dict:
     # Keep the URL outside the command text to avoid command injection.
     command = (
+        "$OutputEncoding = New-Object System.Text.UTF8Encoding($false); "
         "$u=$env:MYBARID_CRM_URL; "
         "if ($env:MYBARID_CRM_USER -and $env:MYBARID_CRM_PASS) { "
         "$sec=ConvertTo-SecureString $env:MYBARID_CRM_PASS -AsPlainText -Force; "
@@ -97,7 +98,9 @@ def _powershell_get_json(url: str, username: str = "", password: str = "") -> di
         "} else { "
         "$r=Invoke-WebRequest -Uri $u -UseDefaultCredentials "
         "-Headers @{Accept='application/json';'OData-Version'='4.0'} -TimeoutSec 120 "
-        "}; $r.Content"
+        "}; "
+        "$parsed = $r.Content | ConvertFrom-Json; "
+        "$parsed | ConvertTo-Json -Compress -Depth 100"
     )
     env = os.environ.copy()
     env["MYBARID_CRM_URL"] = url
@@ -113,7 +116,7 @@ def _powershell_get_json(url: str, username: str = "", password: str = "") -> di
             creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         completed = subprocess.run(
             ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
-            capture_output=True, text=True, encoding="utf-8", timeout=150,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=150,
             env=env, check=False, startupinfo=startupinfo,
             creationflags=creationflags,
         )
@@ -122,8 +125,19 @@ def _powershell_get_json(url: str, username: str = "", password: str = "") -> di
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout or "").strip()
         raise CRMClientError(f"خطا در دریافت اطلاعات CRM: {detail[:700]}")
+    raw_response = completed.stdout
+    if not isinstance(raw_response, str) or not raw_response.strip():
+        detail = (completed.stderr or "").strip()
+        suffix = f" جزئیات: {detail[:500]}" if detail else ""
+        raise CRMClientError(
+            "CRM پاسخ JSON برنگرداند؛ احتمالاً پاسخ خالی، خطای احراز هویت "
+            f"یا خطای سرویس است.{suffix}"
+        )
     try:
-        payload = json.loads(completed.stdout)
+        # Some Dynamics installations return literal control characters inside
+        # multiline annotation text.  The response is still structurally JSON;
+        # accepting those characters here preserves the Note content.
+        payload = json.loads(raw_response, strict=False)
     except json.JSONDecodeError as exc:
         raise CRMClientError("پاسخ CRM قابل خواندن نیست یا احراز هویت Windows موفق نبود.") from exc
     if not isinstance(payload, dict):
