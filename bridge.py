@@ -1007,7 +1007,8 @@ class Api:
     def get_cases_table(self, period: str, page: int, page_size: int,
                          expert_filter: str | None = None, status_reason_filter: list[str] | None = None,
                          case_number_filter: str | None = None,
-                         service_filter: str | None = None) -> dict:
+                         service_filter: str | None = None,
+                         ai_status_filter: str | None = None) -> dict:
         if not self.result:
             return {"ok": False}
         cases, scores = self._resolve_period(period)
@@ -1033,6 +1034,13 @@ class Api:
             if service_filter and (case.service or "") != service_filter:
                 continue
             b = scores.get(key)
+            ai_analyzed = bool(b and b.ai_used) or is_case_ai_analyzed(
+                case, self.config, self.ai_settings
+            )
+            if ai_status_filter == "analyzed" and not ai_analyzed:
+                continue
+            if ai_status_filter == "unanalyzed" and ai_analyzed:
+                continue
             rows.append({
                 "case_key": key, "case_number": case.case_number, "case_title": case.case_title,
                 "expert": expert, "status_reason": case.status_reason,
@@ -1041,9 +1049,7 @@ class Api:
                 "objective_score": b.objective_score if b else None,
                 "ai_score": b.ai_score if b else None,
                 "final_score": b.final_score if b else None,
-                "ai_analyzed": bool(b and b.ai_used) or is_case_ai_analyzed(
-                    case, self.config, self.ai_settings
-                ),
+                "ai_analyzed": ai_analyzed,
             })
         rows.sort(key=lambda r: (r["final_score"] is None, r["final_score"] or 0))
         total = len(rows)

@@ -525,6 +525,14 @@
             <label class="field-label">نوع مورد</label>
             <select id="cases-service-filter" onchange="loadCasesTable(0)"><option value="">همه انواع موارد</option></select>
           </div>
+          <div class="field" style="max-width:220px">
+            <label class="field-label">وضعیت تحلیل AI</label>
+            <select id="cases-ai-status-filter" onchange="loadCasesTable(0)">
+              <option value="">همه موارد</option>
+              <option value="analyzed">فقط تحلیل‌شده با AI</option>
+              <option value="unanalyzed">فقط تحلیل‌نشده با AI</option>
+            </select>
+          </div>
           <div class="field" style="max-width:240px">
             <label class="field-label">Status Reason (چند انتخابی)</label>
             <div class="multi-filter" id="cases-status-filter-wrap">

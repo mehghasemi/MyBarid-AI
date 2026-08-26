@@ -1282,8 +1282,9 @@ async function loadCasesTable(page) {
   const statusFilter = state.casesStatusReasons.slice();
   const numberQuery = document.getElementById('cases-number-search').value.trim() || null;
   const serviceFilter = document.getElementById('cases-service-filter').value || null;
+  const aiStatusFilter = document.getElementById('cases-ai-status-filter').value || null;
   const res = await api().get_cases_table(period, page, state.casesPageSize, expertFilter,
-    statusFilter.length ? statusFilter : null, numberQuery, serviceFilter);
+    statusFilter.length ? statusFilter : null, numberQuery, serviceFilter, aiStatusFilter);
   if (!res.ok) return;
   document.getElementById('cases-empty').style.display = 'none';
   document.getElementById('cases-content').style.display = 'block';
