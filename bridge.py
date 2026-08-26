@@ -599,7 +599,8 @@ class Api:
             ai_settings = copy.deepcopy(self.ai_settings)
             self.result = None
             self.status = {"running": True, "done": False, "cancelled": False, "stage": "شروع", "current": 0, "total": 0,
-                           "error": None, "generation": generation, "mode": mode}
+                           "error": None, "generation": generation, "mode": mode,
+                           "selected_case_count": len(selected_keys)}
         thread = threading.Thread(
             target=self._run_worker,
             args=(dataset, config, ai_settings, period1, period2, expert_filter, unit, mode, generation, force_ai, cancel_event, selected_keys),
@@ -652,8 +653,16 @@ class Api:
             with self._lock:
                 if generation != self._analysis_generation or (cancel_event and cancel_event.is_set()):
                     return
+                analyzed_count = (
+                    len(result["general"].cases)
+                    if result.get("mode") == "general"
+                    else len(set(result["period1"].cases) | set(result["period2"].cases))
+                )
                 self.result = result
-                self.status.update({"running": False, "done": True, "stage": "پایان یافت"})
+                self.status.update({
+                    "running": False, "done": True, "stage": "پایان یافت",
+                    "analyzed_case_count": analyzed_count,
+                })
         except AnalysisCancelled:
             with self._lock:
                 if generation == self._analysis_generation and self.status.get("running"):

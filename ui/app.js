@@ -576,7 +576,13 @@ async function pollStatus() {
   }
   if (status.done) {
     state.analysisDone = true;
-    document.getElementById('run-result').innerHTML = `<div class="ok-box">تحلیل با موفقیت انجام شد.</div>`;
+    const selectedCount = status.selected_case_count ?? state.selectedCaseKeys.size;
+    const analyzedCount = status.analyzed_case_count ?? selectedCount;
+    const note = status.mode === 'general' && analyzedCount !== selectedCount
+      ? `تعداد تحلیل‌شده (${analyzedCount}) با انتخاب شما (${selectedCount}) یکسان نیست.`
+      : `تحلیل ${analyzedCount.toLocaleString('fa-IR')} مورد انجام شد.`;
+    document.getElementById('run-result').innerHTML =
+      `<div class="ok-box">تحلیل با موفقیت انجام شد. ${note}</div>`;
     document.getElementById('btn-run').disabled = false;
     document.getElementById('btn-cancel-analysis').style.display = 'none';
     refreshAllReports();
