@@ -36,14 +36,8 @@ document.querySelectorAll('.nav-item').forEach(el => {
   el.addEventListener('click', () => showPage(el.dataset.page));
 });
 
-document.querySelectorAll('.module-card').forEach(el => {
-  el.addEventListener('click', () => {
-    activateModule(el.dataset.module);
-  });
-});
-
 function activateModule(moduleName) {
-  document.querySelectorAll('.module-card').forEach(card => {
+  document.querySelectorAll('.module-option').forEach(card => {
     const active = card.dataset.module === moduleName;
     card.classList.toggle('active', active);
     card.setAttribute('aria-pressed', active ? 'true' : 'false');
@@ -51,10 +45,40 @@ function activateModule(moduleName) {
   document.querySelectorAll('.module-menu').forEach(menu => {
     menu.classList.toggle('active', menu.dataset.moduleMenu === moduleName);
   });
+  const selected = document.querySelector(`.module-option[data-module="${moduleName}"]`);
+  const trigger = document.getElementById('module-picker-trigger');
+  if (selected && trigger) {
+    const icon = selected.querySelector('.module-icon')?.textContent || '';
+    const title = selected.querySelector('strong')?.textContent || '';
+    const subtitle = moduleName === 'project-management' ? 'در دست توسعه' : 'محیط فعال';
+    trigger.querySelector('.module-icon').textContent = icon;
+    trigger.querySelector('.module-copy strong').textContent = title;
+    trigger.querySelector('.module-copy small').textContent = subtitle;
+  }
+  closeModulePicker();
   if (moduleName === 'project-management') {
     toast('ماژول مدیریت پروژه‌ها در دست توسعه است.');
   }
 }
+
+function toggleModulePicker() {
+  const menu = document.getElementById('module-picker-menu');
+  const trigger = document.getElementById('module-picker-trigger');
+  if (!menu || !trigger) return;
+  const open = menu.classList.toggle('open');
+  trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function closeModulePicker() {
+  const menu = document.getElementById('module-picker-menu');
+  const trigger = document.getElementById('module-picker-trigger');
+  if (menu) menu.classList.remove('open');
+  if (trigger) trigger.setAttribute('aria-expanded', 'false');
+}
+
+document.addEventListener('click', event => {
+  if (!event.target.closest('.module-switcher')) closeModulePicker();
+});
 
 function showPage(name) {
   const analysisPages = new Set(['dashboard', 'general', 'comparison', 'ranking', 'cases', 'suspicious', 'data-quality', 'mgmt-report', 'export']);
@@ -68,8 +92,8 @@ function showPage(name) {
 
 function applyNavigationLabels() {
   const labels = {
-    upload: '📂 بارگذاری داده‌ها',
-    periods: '🗓 بازه‌ها و اجرای تحلیل',
+    upload: '📂 ورودی داده‌ها',
+    periods: '🧭 آماده‌سازی و اجرای تحلیل',
     dashboard: '📊 داشبورد',
     general: '🔎 تحلیل کلی',
     comparison: '🔁 مقایسه دوره‌ها',

@@ -15,23 +15,29 @@
     </div>
 
     <div class="module-switcher" aria-label="ماژول‌های سامانه">
-      <div class="module-caption"><span>ماژول‌های سامانه</span><small>محیط کاری را انتخاب کنید</small></div>
-      <button type="button" class="module-card active" data-module="crm-quality">
+      <div class="module-caption"><span>ماژول فعال</span><small>تغییر محیط کاری</small></div>
+      <button type="button" id="module-picker-trigger" class="module-picker-trigger"
+              onclick="toggleModulePicker()" aria-haspopup="listbox" aria-expanded="false">
         <span class="module-icon">⚖️</span>
         <span class="module-copy">
           <strong>ارزیابی کیفیت CRM</strong>
-          <small>ماژول فعال</small>
+          <small>محیط فعال</small>
         </span>
-        <span class="module-chevron">‹</span>
+        <span class="module-chevron">⌄</span>
       </button>
-      <button type="button" class="module-card planned" data-module="project-management" title="این ماژول در دست توسعه است" aria-pressed="false">
-        <span class="module-icon">📋</span>
-        <span class="module-copy">
-          <strong>مدیریت پروژه‌ها</strong>
-          <small>در دست توسعه</small>
-        </span>
-        <span class="module-chevron">‹</span>
-      </button>
+      <div id="module-picker-menu" class="module-picker-menu" role="listbox" aria-label="فهرست ماژول‌ها">
+        <button type="button" class="module-option active" data-module="crm-quality" onclick="activateModule('crm-quality')">
+          <span class="module-icon">⚖️</span>
+          <span class="module-copy"><strong>ارزیابی کیفیت CRM</strong><small>تحلیل Notes و Tasks</small></span>
+          <span class="module-option-check">✓</span>
+        </button>
+        <button type="button" class="module-option planned" data-module="project-management"
+                title="این ماژول در دست توسعه است" onclick="activateModule('project-management')">
+          <span class="module-icon">📋</span>
+          <span class="module-copy"><strong>مدیریت پروژه‌ها</strong><small>در دست توسعه</small></span>
+          <span class="module-option-check">—</span>
+        </button>
+      </div>
     </div>
 
     <div class="module-menu-label"><span>قابلیت‌های ماژول انتخاب‌شده</span><b>فعال</b></div>
@@ -52,8 +58,8 @@
       <div class="nav-item" data-page="export">⬇️ Export</div>
 
       <div class="nav-section-title">تنظیمات</div>
-      <div class="nav-item active" data-page="upload">📂 بارگذاری فایل‌ها</div>
-      <div class="nav-item" data-page="periods">🗓 بازه‌های زمانی و اجرای تحلیل</div>
+      <div class="nav-item active" data-page="upload">📂 ورودی داده‌ها</div>
+      <div class="nav-item" data-page="periods">🧭 آماده‌سازی و اجرای تحلیل</div>
       <div class="nav-item" data-page="expert-groups">👥 گروه‌بندی کارشناسان</div>
       <div class="nav-item" data-page="criteria">⚖️ معیارها و وزن‌ها</div>
       <div class="nav-item" data-page="ai-settings">🤖 تنظیمات AI</div>
@@ -195,11 +201,27 @@
         <button class="btn" style="margin-top:10px" onclick="autoLoadDefaultFiles()">بازخوانی فایل‌های ورودی</button>
       </div>
 
-      <div class="card case-selection-card" style="margin-top:16px">
+      <div id="upload-result" style="margin-top:20px"></div>
+    </section>
+
+    <!-- =========================================================== Periods -->
+    <section class="page" id="page-periods">
+      <h1 class="page-title">انتخاب بازه‌های زمانی و اجرای تحلیل</h1>
+      <p class="page-sub">دو دوره مستقل برای مقایسه انتخاب کنید (تاریخ‌ها شمسی است). فیلتر بر اساس تاریخ ثبت Note/Task انجام می‌شود.</p>
+
+      <div class="analysis-flow">
+        <div class="analysis-flow-step done"><b>۱</b><span>بارگذاری داده</span><small>از منوی بارگذاری</small></div>
+        <div class="analysis-flow-line"></div>
+        <div class="analysis-flow-step active"><b>۲</b><span>انتخاب موارد</span><small>کاهش حجم تحلیل</small></div>
+        <div class="analysis-flow-line"></div>
+        <div class="analysis-flow-step"><b>۳</b><span>تنظیم و اجرا</span><small>دوره و حالت تحلیل</small></div>
+      </div>
+
+      <div class="card case-selection-card" style="margin-top:14px">
         <div class="case-selection-heading">
           <div>
-            <h3>انتخاب موارد برای تحلیل</h3>
-            <p class="page-sub">برای کاهش زمان تحلیل، فقط موارد انتخاب‌شده وارد Pipeline می‌شوند. پیش‌فرض همه موارد انتخاب شده‌اند.</p>
+            <h3>مرحله ۲: انتخاب موارد</h3>
+            <p class="page-sub">فقط موارد انتخاب‌شده تحلیل می‌شوند. پیش‌فرض همه موارد انتخاب شده‌اند.</p>
           </div>
           <div id="case-selection-count" class="case-selection-count">۰ مورد از ۰ مورد انتخاب شده</div>
         </div>
@@ -207,8 +229,8 @@
           <input id="case-selection-search" class="case-selection-search"
                  placeholder="جست‌وجوی شماره، عنوان، سرویس یا کارشناس..."
                  oninput="debouncedCaseSelectionSearch()">
-          <button class="btn" onclick="selectAllCaseSelection()">انتخاب همه موارد</button>
-          <button class="btn" onclick="clearAllCaseSelection()">لغو انتخاب همه</button>
+          <button class="btn" onclick="selectAllCaseSelection()">انتخاب همه</button>
+          <button class="btn" onclick="clearAllCaseSelection()">لغو همه</button>
         </div>
         <div class="case-selection-table-wrap">
           <table class="case-selection-table">
@@ -235,14 +257,6 @@
         </div>
       </div>
 
-      <div id="upload-result" style="margin-top:20px"></div>
-    </section>
-
-    <!-- =========================================================== Periods -->
-    <section class="page" id="page-periods">
-      <h1 class="page-title">انتخاب بازه‌های زمانی و اجرای تحلیل</h1>
-      <p class="page-sub">دو دوره مستقل برای مقایسه انتخاب کنید (تاریخ‌ها شمسی است). فیلتر بر اساس تاریخ ثبت Note/Task انجام می‌شود.</p>
-
       <div class="grid cols-2">
         <div class="card">
           <h3>دوره اول</h3>
@@ -258,6 +272,11 @@
             <div class="field"><label class="field-label">تا تاریخ</label><div id="p2-end-picker"></div></div>
           </div>
         </div>
+      </div>
+
+      <div class="analysis-section-title">
+        <span class="analysis-section-number">۳</span>
+        <div><strong>تنظیم تحلیل و اجرا</strong><small>حالت تحلیل، بازه زمانی و گروه کارشناسان را مشخص کنید.</small></div>
       </div>
 
       <div class="card" style="margin-top:16px">
