@@ -6,7 +6,7 @@ import time
 from typing import Callable
 
 from ai.prompts import build_case_prompt, build_system_prompt
-from ai.providers import AIProviderError, AISettings, get_provider
+from ai.providers import AIProviderError, AIQuotaError, AISettings, get_provider
 from ai.schemas import extract_json, validate_case_analysis
 from config.criteria_config import CriteriaConfig
 from data.cleaner import CaseBundle
@@ -87,6 +87,9 @@ def analyze_case(
             cancel_check()
         try:
             raw = provider.complete(system, user, settings)
+        except AIQuotaError as exc:
+            # خطای سهمیه با Retry کوتاه حل نمی‌شود؛ از ارسال درخواست‌های تکراری جلوگیری کن.
+            return {}, str(exc)
         except AIProviderError as exc:
             last_error = str(exc)
             if cancel_check:

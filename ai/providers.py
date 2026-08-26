@@ -16,6 +16,10 @@ class AIProviderError(Exception):
     """خطای قابل‌نمایش (پیام فارسی) هنگام فراخوانی Provider."""
 
 
+class AIQuotaError(AIProviderError):
+    """سهمیه/نرخ مجاز Provider تمام شده و Retry فوری فایده ندارد."""
+
+
 @dataclass
 class AISettings:
     provider: str = "openai"  # openai | custom | gemini | disabled
@@ -58,6 +62,11 @@ class OpenAICompatibleProvider(BaseProvider):
                 data = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", "replace")
+            if exc.code == 429:
+                raise AIQuotaError(
+                    f"سهمیه سرویس AI تمام شده است (429). "
+                    f"لطفاً سهمیه و Billing را بررسی کنید و بعداً دوباره تلاش کنید.\n{body[:700]}"
+                ) from exc
             raise AIProviderError(f"خطای سرویس AI ({exc.code}): {body[:500]}") from exc
         except urllib.error.URLError as exc:
             raise AIProviderError(f"عدم دسترسی به سرویس AI: {exc.reason}") from exc
@@ -99,6 +108,11 @@ class GeminiProvider(BaseProvider):
                 data = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", "replace")
+            if exc.code == 429:
+                raise AIQuotaError(
+                    f"سهمیه Gemini تمام شده است (429). "
+                    f"لطفاً سهمیه و Billing را بررسی کنید و بعداً دوباره تلاش کنید.\n{body[:700]}"
+                ) from exc
             raise AIProviderError(f"خطای سرویس Gemini ({exc.code}): {body[:500]}") from exc
         except urllib.error.URLError as exc:
             raise AIProviderError(f"عدم دسترسی به سرویس Gemini: {exc.reason}") from exc
