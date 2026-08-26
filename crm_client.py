@@ -73,21 +73,55 @@ def _value(row: dict, *names: str):
 
 def _display(row: dict, *names: str):
     for name in names:
+        candidates = (name, f"{name}name", f"{name}_name")
         value = _value(
             row,
-            f"{name}@OData.Community.Display.V1.FormattedValue",
-            f"{name}@odata.displayname",
-            name,
+            *[
+                candidate
+                for base in candidates
+                for candidate in (
+                    f"{base}@OData.Community.Display.V1.FormattedValue",
+                    f"{base}@odata.displayname",
+                    base,
+                )
+            ],
         )
         if value not in (None, ""):
-            return value
+            text = str(value)
+            # Do not expose a raw Dataverse GUID/option number when no label
+            # was returned by the selected View.
+            if not (_looks_like_guid(text) or text.isdecimal()):
+                return value
+        # Dynamics can vary the casing of annotation names after the
+        # PowerShell JSON round-trip.  Find the formatted value by its
+        # semantic suffix before falling back to a raw GUID/option value.
+        for base in candidates:
+            wanted = base.casefold()
+            for key, candidate in row.items():
+                key_text = str(key).casefold()
+                key_field = key_text.split("@", 1)[0].split(".")[-1]
+                wanted_field = wanted.split(".")[-1]
+                if (key_text.find("@") > 0
+                        and key_field == wanted_field
+                        and "formattedvalue" in key_text
+                        and candidate not in (None, "")):
+                    return candidate
     return None
+
+
+def _looks_like_guid(value: str) -> bool:
+    parts = value.split("-")
+    return len(parts) == 5 and all(parts) and all(
+        all(ch in "0123456789abcdefABCDEF" for ch in part) for part in parts
+    )
 
 
 def _powershell_get_json(url: str, username: str = "", password: str = "") -> dict:
     # Keep the URL outside the command text to avoid command injection.
     command = (
-        "$OutputEncoding = New-Object System.Text.UTF8Encoding($false); "
+        "$utf8 = New-Object System.Text.UTF8Encoding($false); "
+        "$OutputEncoding = $utf8; "
+        "[Console]::OutputEncoding = $utf8; "
         "$u=$env:MYBARID_CRM_URL; "
         "if ($env:MYBARID_CRM_USER -and $env:MYBARID_CRM_PASS) { "
         "$sec=ConvertTo-SecureString $env:MYBARID_CRM_PASS -AsPlainText -Force; "
@@ -99,7 +133,9 @@ def _powershell_get_json(url: str, username: str = "", password: str = "") -> di
         "$r=Invoke-WebRequest -Uri $u -UseDefaultCredentials "
         "-Headers @{Accept='application/json';'OData-Version'='4.0'} -TimeoutSec 120 "
         "}; "
-        "$parsed = $r.Content | ConvertFrom-Json; "
+        "$bytes = $r.RawContentStream.ToArray(); "
+        "$content = [System.Text.Encoding]::UTF8.GetString($bytes); "
+        "$parsed = $content | ConvertFrom-Json; "
         "$parsed | ConvertTo-Json -Compress -Depth 100"
     )
     env = os.environ.copy()
