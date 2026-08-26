@@ -192,6 +192,19 @@
         <button class="btn" style="margin-top:10px" onclick="autoLoadDefaultFiles()">بازخوانی فایل‌های ورودی</button>
       </div>
 
+      <div class="card" style="margin-top:16px">
+        <h3>اتصال خواندنی به Microsoft Dynamics 365</h3>
+        <p class="page-sub">اطلاعات View انتخاب‌شده از CRM با حساب Windows فعلی خوانده می‌شود و هیچ تغییری در CRM ثبت نمی‌شود.</p>
+        <div class="row">
+          <div class="field"><label class="field-label">آدرس CRM</label><input id="crm-base-url" value="https://crm.baridsoft.ir"></div>
+          <div class="field"><label class="field-label">سازمان</label><input id="crm-organization" value="Main"></div>
+          <div class="field"><label class="field-label">نام View</label><input id="crm-view-name" value="TESTNOTE"></div>
+        </div>
+        <div id="crm-status" class="muted-box">وضعیت اتصال CRM هنوز بررسی نشده است.</div>
+        <button class="btn" onclick="testCrmConnection()">آزمون اتصال</button>
+        <button class="btn primary" onclick="syncCrmView()">دریافت داده از View</button>
+      </div>
+
       <div id="upload-result" style="margin-top:20px"></div>
     </section>
 

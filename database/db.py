@@ -108,6 +108,16 @@ def init_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_ai_analysis_history_case
                 ON ai_analysis_history(case_key, analyzed_at);
+            CREATE TABLE IF NOT EXISTS crm_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source TEXT NOT NULL,
+                view_name TEXT NOT NULL,
+                fetched_at TEXT NOT NULL,
+                metadata TEXT NOT NULL,
+                payload TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_crm_snapshots_fetched
+                ON crm_snapshots(fetched_at);
             """
         )
         conn.commit()
@@ -170,6 +180,42 @@ def clear_ai_cache() -> None:
     try:
         conn.execute("DELETE FROM ai_cache")
         conn.commit()
+    finally:
+        conn.close()
+
+
+def save_crm_snapshot(source: str, view_name: str, fetched_at: str,
+                      metadata: dict, payload: dict) -> None:
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO crm_snapshots(source, view_name, fetched_at, metadata, payload) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (source, view_name, fetched_at, json.dumps(metadata, ensure_ascii=False),
+             json.dumps(payload, ensure_ascii=False)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_latest_crm_snapshot() -> dict | None:
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT source, view_name, fetched_at, metadata, payload "
+            "FROM crm_snapshots ORDER BY fetched_at DESC, id DESC LIMIT 1"
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "source": row["source"], "view_name": row["view_name"],
+            "fetched_at": row["fetched_at"],
+            "metadata": json.loads(row["metadata"]),
+            "payload": json.loads(row["payload"]),
+        }
+    except (json.JSONDecodeError, TypeError):
+        return None
     finally:
         conn.close()
 

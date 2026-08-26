@@ -15,6 +15,10 @@ from config.criteria_config import Category, Criterion, CriteriaConfig, load_cri
 import webview
 from data.loader import ExcelLoadError
 from database import db
+from crm_client import (
+    DEFAULT_API_VERSION, DEFAULT_BASE_URL, DEFAULT_ORGANIZATION, DEFAULT_VIEW_NAME,
+    CRMClientError, DynamicsCRMClient, dataset_from_payload, dataset_to_payload,
+)
 from pipeline import Dataset, run_full_analysis, run_general_analysis
 from analysis.scoring import score_case
 import pipeline as pipeline_mod
@@ -70,6 +74,7 @@ class Api:
         self._analysis_cancel_event: threading.Event | None = None
         self._case_ai_status: dict[str, dict] = {}
         self._lock = threading.Lock()
+        self._restore_latest_crm_snapshot()
 
     def __dir__(self):
         """Expose only API methods to pywebview's bridge introspection.
@@ -153,6 +158,71 @@ class Api:
             "notes_exists": (input_dir / "notes.xlsx").exists(),
             "tasks_exists": (input_dir / "tasks.xlsx").exists(),
         }
+
+    def get_crm_settings(self) -> dict:
+        stored = db.get_setting("crm_settings", {}) or {}
+        return {
+            "base_url": stored.get("base_url", DEFAULT_BASE_URL),
+            "organization": stored.get("organization", DEFAULT_ORGANIZATION),
+            "api_version": stored.get("api_version", DEFAULT_API_VERSION),
+            "view_name": stored.get("view_name", DEFAULT_VIEW_NAME),
+            "last_snapshot": db.get_latest_crm_snapshot(),
+        }
+
+    def save_crm_settings(self, payload: dict) -> dict:
+        settings = {
+            "base_url": str(payload.get("base_url") or DEFAULT_BASE_URL).rstrip("/"),
+            "organization": str(payload.get("organization") or DEFAULT_ORGANIZATION).strip("/"),
+            "api_version": str(payload.get("api_version") or DEFAULT_API_VERSION).strip("/"),
+            "view_name": str(payload.get("view_name") or DEFAULT_VIEW_NAME).strip(),
+        }
+        db.set_setting("crm_settings", settings)
+        return {"ok": True, **settings}
+
+    def test_crm_connection(self, payload: dict | None = None) -> dict:
+        settings = self.save_crm_settings(payload or {})
+        try:
+            result = DynamicsCRMClient(**{key: settings[key] for key in (
+                "base_url", "organization", "api_version", "view_name")}).test_connection()
+            return {"ok": True, "api_root": result["api_root"]}
+        except CRMClientError as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def sync_crm_view(self, payload: dict | None = None) -> dict:
+        settings = self.save_crm_settings(payload or {})
+        client = DynamicsCRMClient(**{key: settings[key] for key in (
+            "base_url", "organization", "api_version", "view_name")})
+        try:
+            dataset, metadata = client.fetch_view_dataset()
+        except CRMClientError as exc:
+            return {"ok": False, "error": str(exc)}
+        db.save_crm_snapshot("dynamics365", settings["view_name"], metadata["fetched_at"],
+                             metadata, dataset_to_payload(dataset))
+        with self._lock:
+            self._analysis_generation += 1
+            self.dataset = dataset
+            self.result = None
+        return {
+            "ok": True, "source": "CRM", "view_name": settings["view_name"],
+            "fetched_at": metadata["fetched_at"], "total_cases": len(dataset.cases),
+            "total_notes": len(dataset.notes), "total_tasks": 0,
+            "date_bounds": self._dataset_date_bounds(dataset),
+            "warning": "در این مرحله فقط Noteهای View دریافت می‌شوند؛ Taskها هنوز از CRM خوانده نمی‌شوند.",
+        }
+
+    def _restore_latest_crm_snapshot(self):
+        snapshot = db.get_latest_crm_snapshot()
+        if not snapshot:
+            return
+        try:
+            self.dataset = dataset_from_payload(snapshot["payload"])
+        except (KeyError, TypeError, ValueError):
+            self.dataset = None
+
+    @staticmethod
+    def _dataset_date_bounds(dataset: Dataset) -> dict:
+        dates = [n.note_date for n in dataset.notes if n.note_date]
+        return {"min": _iso(min(dates)), "max": _iso(max(dates))} if dates else {"min": None, "max": None}
 
     def get_dataset_case_keys(self) -> dict:
         return {"ok": True, "keys": sorted(self.dataset.cases) if self.dataset else []}

@@ -479,6 +479,53 @@ async function autoLoadDefaultFiles() {
   }
 }
 
+function crmPayload() {
+  return {
+    base_url: document.getElementById('crm-base-url').value.trim(),
+    organization: document.getElementById('crm-organization').value.trim(),
+    api_version: 'v9.1',
+    view_name: document.getElementById('crm-view-name').value.trim(),
+  };
+}
+
+async function loadCrmSettings() {
+  const s = await api().get_crm_settings();
+  if (!s) return;
+  document.getElementById('crm-base-url').value = s.base_url || '';
+  document.getElementById('crm-organization').value = s.organization || '';
+  document.getElementById('crm-view-name').value = s.view_name || '';
+  if (s.last_snapshot) {
+    const m = s.last_snapshot.metadata || {};
+    document.getElementById('crm-status').textContent =
+      `آخرین Snapshot: ${m.fetched_at || s.last_snapshot.fetched_at} — View: ${s.last_snapshot.view_name}`;
+    state.datasetLoaded = true;
+    state.dateBounds = null;
+    document.getElementById('dataset-status').textContent = 'داده قبلی CRM بازیابی شد';
+    initializeCaseSelection();
+  }
+}
+
+async function testCrmConnection() {
+  const box = document.getElementById('crm-status');
+  box.textContent = 'در حال آزمون اتصال...';
+  const res = await api().test_crm_connection(crmPayload());
+  box.textContent = res.ok ? `اتصال موفق است: ${res.api_root}` : `خطا: ${res.error}`;
+}
+
+async function syncCrmView() {
+  const box = document.getElementById('crm-status');
+  box.textContent = 'در حال دریافت داده از CRM...';
+  const res = await api().sync_crm_view(crmPayload());
+  if (!res.ok) { box.textContent = `خطا: ${res.error}`; return; }
+  state.datasetLoaded = true;
+  state.dateBounds = res.date_bounds;
+  document.getElementById('dataset-status').textContent =
+    `${res.total_cases.toLocaleString('fa-IR')} مورد | داده CRM بارگذاری شد`;
+  box.textContent = `دریافت موفق: ${res.total_notes} Note و ${res.total_cases} مورد — ${res.warning}`;
+  await initializeCaseSelection();
+  toast('داده CRM با موفقیت دریافت شد', 'success');
+}
+
 async function clearDataset() {
   await api().clear_dataset();
   state.datasetLoaded = false;
@@ -1708,6 +1755,7 @@ function initApp() {
   loadCriteria();
   loadAiSettings();
   loadExpertGroupsSettings();
+  loadCrmSettings();
   autoLoadDefaultFiles();
   buildJalaliPicker('p1-start-picker');
   buildJalaliPicker('p1-end-picker');
