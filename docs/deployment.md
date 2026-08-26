@@ -23,12 +23,15 @@ run.cmd
 ## Build EXE
 
 ```powershell
-.venv\Scripts\pyinstaller.exe --noconfirm --clean MyBarid-AI.spec
-Copy-Item .\dist\MyBarid-AI.exe .\MyBarid-AI.exe -Force
+. .\scripts\sync_portable.ps1 -BuildExe
 ```
 
 نسخه قابل استفاده برای انتقال باید در پوشه `MyBarid-AI-Portable` قرار گیرد و
 همراه فایل‌های داده همان پوشه منتقل شود.
+
+پس از هر Build، فایل اجرایی ریشه پروژه و نسخه Portable هم‌زمان به‌روزرسانی
+می‌شوند. تنظیمات کاربر از Portable به ریشه پروژه نیز Mirror می‌شوند؛
+`app.db`، `criteria_config.json` و `api-key.bin` محلی هستند و نباید Commit شوند.
 
 ## کامپیوتر مقصد
 
