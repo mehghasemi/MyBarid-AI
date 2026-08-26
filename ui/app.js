@@ -14,6 +14,12 @@ const state = {
   suspiciousService: '',
   casesPage: 0,
   casesPageSize: 25,
+  selectedCaseKeys: new Set(),
+  caseSelectionPage: 0,
+  caseSelectionPageSize: 50,
+  caseSelectionTotal: 0,
+  caseSelectionQuery: '',
+  caseSelectionSearchTimer: null,
   charts: {},
   criteriaConfig: null,
   currentExpert: null,
@@ -170,6 +176,129 @@ function dateDual(isoStr) {
   return `${toShamsiStr(isoStr)} <span style="color:var(--muted);font-size:11px">(${toGregStr(isoStr)})</span>`;
 }
 
+/* ------------------------------------------------------------------------
+   انتخاب موارد پیش از تحلیل
+------------------------------------------------------------------------ */
+function updateCaseSelectionSummary() {
+  const el = document.getElementById('case-selection-count');
+  if (!el) return;
+  el.textContent = `${state.selectedCaseKeys.size.toLocaleString('fa-IR')} مورد از ${state.caseSelectionTotal.toLocaleString('fa-IR')} مورد انتخاب شده`;
+}
+
+function renderCaseSelectionRows(rows) {
+  const body = document.getElementById('case-selection-body');
+  if (!body) return;
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="7" class="case-selection-empty">موردی با این جست‌وجو پیدا نشد.</td></tr>';
+  } else {
+    body.innerHTML = rows.map(row => {
+      const encodedKey = encodeURIComponent(String(row.case_key));
+      const title = row.case_title || 'بدون عنوان';
+      return `<tr>
+        <td class="case-selection-check"><input type="checkbox" ${state.selectedCaseKeys.has(String(row.case_key)) ? 'checked' : ''}
+          data-case-key="${encodedKey}" onchange="toggleCaseSelection(this.dataset.caseKey)"></td>
+        <td><strong>${escapeHtml(row.case_number || row.case_key)}</strong><small>${escapeHtml(title)}</small></td>
+        <td>${escapeHtml(row.service || '—')}</td>
+        <td>${escapeHtml(row.owner || '—')}</td>
+        <td>${escapeHtml(row.status_reason || row.status || '—')}</td>
+        <td>${row.notes ?? 0}</td>
+        <td>${row.tasks ?? 0}</td>
+      </tr>`;
+    }).join('');
+  }
+  const pageCheck = document.getElementById('case-selection-page-check');
+  if (pageCheck) {
+    pageCheck.checked = rows.length > 0 && rows.every(row => state.selectedCaseKeys.has(String(row.case_key)));
+    pageCheck.indeterminate = rows.some(row => state.selectedCaseKeys.has(String(row.case_key))) && !pageCheck.checked;
+  }
+}
+
+async function loadCaseSelection(page = 0) {
+  const body = document.getElementById('case-selection-body');
+  if (!body || !state.datasetLoaded) return;
+  body.innerHTML = '<tr><td colspan="7" class="case-selection-empty">در حال دریافت فهرست موارد...</td></tr>';
+  try {
+    const res = await api().get_dataset_cases(state.caseSelectionQuery, page, state.caseSelectionPageSize);
+    if (!res.ok) throw new Error(res.error || 'دریافت فهرست موارد ناموفق بود');
+    state.caseSelectionPage = res.page || page;
+    state.caseSelectionTotal = res.total || 0;
+    renderCaseSelectionRows(res.rows || []);
+    const pageCount = Math.max(1, Math.ceil(state.caseSelectionTotal / state.caseSelectionPageSize));
+    const pageLabel = document.getElementById('case-selection-page');
+    if (pageLabel) pageLabel.textContent = `صفحه ${(state.caseSelectionPage + 1).toLocaleString('fa-IR')} از ${pageCount.toLocaleString('fa-IR')}`;
+    updateCaseSelectionSummary();
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="7" class="case-selection-empty error-text">${escapeHtml(String(e))}</td></tr>`;
+  }
+}
+
+async function initializeCaseSelection() {
+  try {
+    const res = await api().get_dataset_case_keys();
+    if (!res.ok) throw new Error(res.error || 'دریافت موارد ناموفق بود');
+    state.selectedCaseKeys = new Set((res.keys || []).map(String));
+    state.caseSelectionQuery = '';
+    state.caseSelectionPage = 0;
+    state.caseSelectionTotal = res.keys ? res.keys.length : 0;
+    const search = document.getElementById('case-selection-search');
+    if (search) search.value = '';
+    await loadCaseSelection(0);
+  } catch (e) {
+    toast('فهرست موارد بارگذاری نشد: ' + e, 'error');
+  }
+}
+
+function toggleCaseSelection(encodedKey) {
+  const key = decodeURIComponent(encodedKey);
+  if (state.selectedCaseKeys.has(key)) state.selectedCaseKeys.delete(key);
+  else state.selectedCaseKeys.add(key);
+  updateCaseSelectionSummary();
+}
+
+function toggleCaseSelectionPage(checked) {
+  document.querySelectorAll('#case-selection-body input[data-case-key]').forEach(input => {
+    const key = decodeURIComponent(input.dataset.caseKey);
+    input.checked = checked;
+    if (checked) state.selectedCaseKeys.add(key);
+    else state.selectedCaseKeys.delete(key);
+  });
+  updateCaseSelectionSummary();
+}
+
+async function selectAllCaseSelection() {
+  const res = await api().get_dataset_case_keys();
+  if (res.ok) {
+    state.selectedCaseKeys = new Set((res.keys || []).map(String));
+    renderCaseSelectionRows([]);
+    await loadCaseSelection(state.caseSelectionPage);
+  }
+  updateCaseSelectionSummary();
+}
+
+function clearAllCaseSelection() {
+  state.selectedCaseKeys.clear();
+  renderCaseSelectionRows([]);
+  loadCaseSelection(state.caseSelectionPage);
+  updateCaseSelectionSummary();
+}
+
+function debouncedCaseSelectionSearch() {
+  clearTimeout(state.caseSelectionSearchTimer);
+  state.caseSelectionSearchTimer = setTimeout(() => {
+    state.caseSelectionQuery = document.getElementById('case-selection-search')?.value || '';
+    loadCaseSelection(0);
+  }, 250);
+}
+
+function caseSelectionPrev() {
+  if (state.caseSelectionPage > 0) loadCaseSelection(state.caseSelectionPage - 1);
+}
+
+function caseSelectionNext() {
+  const pages = Math.ceil(state.caseSelectionTotal / state.caseSelectionPageSize);
+  if (state.caseSelectionPage + 1 < pages) loadCaseSelection(state.caseSelectionPage + 1);
+}
+
 function daysInJalaliMonth(jy, jm) {
   if (jm <= 6) return 31;
   if (jm <= 11) return 30;
@@ -299,6 +428,7 @@ async function doUpload() {
   loadCriteria();
   loadAiSettings();
   loadExpertChecklist();
+  await initializeCaseSelection();
   toast('فایل‌ها بارگذاری شدند', 'success');
 }
 
@@ -328,6 +458,11 @@ async function clearDataset() {
   await api().clear_dataset();
   state.datasetLoaded = false;
   state.analysisDone = false;
+  state.selectedCaseKeys.clear();
+  state.caseSelectionTotal = 0;
+  const selectionBody = document.getElementById('case-selection-body');
+  if (selectionBody) selectionBody.innerHTML = '<tr><td colspan="7" class="case-selection-empty">پس از بارگذاری داده‌ها، فهرست موارد اینجا نمایش داده می‌شود.</td></tr>';
+  updateCaseSelectionSummary();
   state.notesPath = null; state.tasksPath = null;
   document.getElementById('notes-file-name').textContent = 'فایلی انتخاب نشده';
   document.getElementById('tasks-file-name').textContent = 'فایلی انتخاب نشده';
@@ -342,6 +477,10 @@ async function clearDataset() {
 ------------------------------------------------------------------------ */
 async function runAnalysis(forceAi = false) {
   if (!state.datasetLoaded) { toast('ابتدا فایل‌ها را بارگذاری کنید', 'error'); return; }
+  if (!state.selectedCaseKeys.size) {
+    toast('حداقل یک مورد را برای تحلیل انتخاب کنید', 'error');
+    return;
+  }
   const mode = document.getElementById('analysis-mode').value;
   const p1s = mode === 'comparison' ? getJalaliPickerISO('p1-start-picker') : '';
   const p1e = mode === 'comparison' ? getJalaliPickerISO('p1-end-picker') : '';
@@ -356,7 +495,10 @@ async function runAnalysis(forceAi = false) {
   document.getElementById('progress-area').style.display = 'block';
   document.getElementById('run-result').innerHTML = '';
 
-  const res = await api().start_analysis(p1s, p1e, p2s, p2e, expertGroup, mode, forceAi);
+  const res = await api().start_analysis(
+    p1s, p1e, p2s, p2e, expertGroup, mode, forceAi,
+    Array.from(state.selectedCaseKeys)
+  );
   if (!res.ok) {
     toast(res.error, 'error');
     document.getElementById('btn-run').disabled = false;

@@ -15,7 +15,7 @@
     </div>
 
     <div class="module-switcher" aria-label="ماژول‌های سامانه">
-      <div class="module-caption">انتخاب ماژول</div>
+      <div class="module-caption"><span>ماژول‌های سامانه</span><small>محیط کاری را انتخاب کنید</small></div>
       <button type="button" class="module-card active" data-module="crm-quality">
         <span class="module-icon">⚖️</span>
         <span class="module-copy">
@@ -34,7 +34,7 @@
       </button>
     </div>
 
-    <div class="module-menu-label">منوی ماژول فعال</div>
+    <div class="module-menu-label"><span>قابلیت‌های ماژول انتخاب‌شده</span><b>فعال</b></div>
     <div class="module-menu active" data-module-menu="crm-quality">
       <div class="module-menu-header">
         <span class="module-menu-icon">⚖️</span>
@@ -193,6 +193,46 @@
         <p class="page-sub">دو فایل Excel با نام‌های ثابت را در پوشه زیر قرار دهید تا در شروع برنامه خودکار بارگذاری شوند.</p>
         <div id="auto-input-info" class="muted-box">در حال بررسی پوشه ورودی...</div>
         <button class="btn" style="margin-top:10px" onclick="autoLoadDefaultFiles()">بازخوانی فایل‌های ورودی</button>
+      </div>
+
+      <div class="card case-selection-card" style="margin-top:16px">
+        <div class="case-selection-heading">
+          <div>
+            <h3>انتخاب موارد برای تحلیل</h3>
+            <p class="page-sub">برای کاهش زمان تحلیل، فقط موارد انتخاب‌شده وارد Pipeline می‌شوند. پیش‌فرض همه موارد انتخاب شده‌اند.</p>
+          </div>
+          <div id="case-selection-count" class="case-selection-count">۰ مورد از ۰ مورد انتخاب شده</div>
+        </div>
+        <div class="case-selection-toolbar">
+          <input id="case-selection-search" class="case-selection-search"
+                 placeholder="جست‌وجوی شماره، عنوان، سرویس یا کارشناس..."
+                 oninput="debouncedCaseSelectionSearch()">
+          <button class="btn" onclick="selectAllCaseSelection()">انتخاب همه موارد</button>
+          <button class="btn" onclick="clearAllCaseSelection()">لغو انتخاب همه</button>
+        </div>
+        <div class="case-selection-table-wrap">
+          <table class="case-selection-table">
+            <thead>
+              <tr>
+                <th class="case-selection-check"><input type="checkbox" id="case-selection-page-check" onchange="toggleCaseSelectionPage(this.checked)" title="انتخاب موارد این صفحه"></th>
+                <th>شماره / عنوان</th>
+                <th>سرویس</th>
+                <th>کارشناس</th>
+                <th>وضعیت</th>
+                <th>Note</th>
+                <th>Task</th>
+              </tr>
+            </thead>
+            <tbody id="case-selection-body">
+              <tr><td colspan="7" class="case-selection-empty">پس از بارگذاری داده‌ها، فهرست موارد اینجا نمایش داده می‌شود.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="case-selection-pager">
+          <button class="btn" onclick="caseSelectionPrev()">قبلی</button>
+          <span id="case-selection-page">صفحه ۰ از ۰</span>
+          <button class="btn" onclick="caseSelectionNext()">بعدی</button>
+        </div>
       </div>
 
       <div id="upload-result" style="margin-top:20px"></div>

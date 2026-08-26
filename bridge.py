@@ -154,6 +154,40 @@ class Api:
             "tasks_exists": (input_dir / "tasks.xlsx").exists(),
         }
 
+    def get_dataset_case_keys(self) -> dict:
+        return {"ok": True, "keys": sorted(self.dataset.cases) if self.dataset else []}
+
+    def get_dataset_cases(self, query: str = "", page: int = 0, page_size: int = 50) -> dict:
+        if not self.dataset:
+            return {"ok": False, "rows": [], "total": 0}
+        query = (query or "").strip().casefold()
+        rows = []
+        for key, case in self.dataset.cases.items():
+            searchable = " ".join([
+                str(key), str(case.case_number or ""), str(case.case_title or ""),
+                str(case.service or ""), str(case.owner or ""), str(case.status or ""),
+            ]).casefold()
+            if query and query not in searchable:
+                continue
+            rows.append({
+                "case_key": key,
+                "case_number": case.case_number,
+                "case_title": case.case_title,
+                "service": case.service,
+                "owner": case.owner,
+                "status": case.status,
+                "status_reason": case.status_reason,
+                "notes": len(case.notes),
+                "tasks": len(case.tasks),
+            })
+        rows.sort(key=lambda row: (str(row["case_number"] or row["case_key"])))
+        total = len(rows)
+        page = max(0, int(page or 0))
+        page_size = max(1, min(200, int(page_size or 50)))
+        start = page * page_size
+        return {"ok": True, "rows": rows[start:start + page_size], "total": total,
+                "page": page, "page_size": page_size}
+
     def auto_upload_default_files(self) -> dict:
         info = self.get_auto_input_info()
         if not info["notes_exists"] or not info["tasks_exists"]:
@@ -524,11 +558,16 @@ class Api:
 
     def start_analysis(self, p1_start: str = "", p1_end: str = "", p2_start: str = "",
                         p2_end: str = "", expert_group: str | None = None,
-                        mode: str = "comparison", force_ai: bool = False) -> dict:
+                        mode: str = "comparison", force_ai: bool = False,
+                        selected_case_keys: list[str] | None = None) -> dict:
         if not self.dataset:
             return {"ok": False, "error": "ابتدا فایل‌های Notes و Tasks را بارگذاری کنید."}
         if mode not in {"comparison", "general"}:
             return {"ok": False, "error": "حالت تحلیل نامعتبر است."}
+        selected_keys = set(self.dataset.cases.keys()) if selected_case_keys is None else set(selected_case_keys)
+        selected_keys &= set(self.dataset.cases.keys())
+        if not selected_keys:
+            return {"ok": False, "error": "حداقل یک مورد را برای تحلیل انتخاب کنید."}
         period1 = period2 = None
         if mode == "comparison":
             try:
@@ -563,7 +602,7 @@ class Api:
                            "error": None, "generation": generation, "mode": mode}
         thread = threading.Thread(
             target=self._run_worker,
-            args=(dataset, config, ai_settings, period1, period2, expert_filter, unit, mode, generation, force_ai, cancel_event),
+            args=(dataset, config, ai_settings, period1, period2, expert_filter, unit, mode, generation, force_ai, cancel_event, selected_keys),
             daemon=True,
         )
         thread.start()
@@ -583,7 +622,8 @@ class Api:
 
     def _run_worker(self, dataset, config, ai_settings, period1, period2,
                     expert_filter=None, unit="case", mode="comparison", generation=0,
-                    force_ai=False, cancel_event: threading.Event | None = None):
+                    force_ai=False, cancel_event: threading.Event | None = None,
+                    selected_case_keys: set[str] | None = None):
         def progress_cb(label, current, total):
             with self._lock:
                 if generation != self._analysis_generation:
@@ -599,9 +639,15 @@ class Api:
         try:
             settings = ai_settings if ai_settings.enabled else AISettings(enabled=False)
             result = (
-                run_general_analysis(dataset, config, settings, progress_cb, expert_filter, unit, force_ai, cancel_check)
+                run_general_analysis(
+                    dataset, config, settings, progress_cb, expert_filter, unit,
+                    force_ai, cancel_check, selected_case_keys
+                )
                 if mode == "general" else
-                run_full_analysis(dataset, config, period1, period2, settings, progress_cb, expert_filter, unit, force_ai, cancel_check)
+                run_full_analysis(
+                    dataset, config, period1, period2, settings, progress_cb,
+                    expert_filter, unit, force_ai, cancel_check, selected_case_keys
+                )
             )
             with self._lock:
                 if generation != self._analysis_generation or (cancel_event and cancel_event.is_set()):
