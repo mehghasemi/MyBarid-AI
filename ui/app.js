@@ -506,6 +506,11 @@ async function runAnalysis(forceAi = false) {
     toast('حداقل یک مورد را برای تحلیل انتخاب کنید', 'error');
     return;
   }
+  if (forceAi && !window.confirm(
+    `تحلیل مجدد AI برای ${state.selectedCaseKeys.size.toLocaleString('fa-IR')} مورد درخواست شده است و ممکن است سهمیه مصرف کند. ادامه می‌دهید؟`
+  )) {
+    return;
+  }
   const mode = document.getElementById('analysis-mode').value;
   const p1s = mode === 'comparison' ? getJalaliPickerISO('p1-start-picker') : '';
   const p1e = mode === 'comparison' ? getJalaliPickerISO('p1-end-picker') : '';
@@ -1418,13 +1423,16 @@ function renderCaseAiActions(caseKey, analyzed, running = false) {
     box.innerHTML = '<span class="badge warn">در حال بررسی با AI...</span>';
   } else if (analyzed) {
     box.innerHTML = `<span class="badge good">این کیس قبلاً با AI بررسی شده است</span>
-      <button class="btn ghost" onclick="runSingleCaseAi('${caseKey.replace(/'/g, "\\'")}', true)">بررسی مجدد با AI</button>`;
+      <button class="btn ghost" onclick="runSingleCaseAi('${caseKey.replace(/'/g, "\\'")}', true)">درخواست بررسی مجدد</button>`;
   } else {
     box.innerHTML = `<button class="btn primary" onclick="runSingleCaseAi('${caseKey.replace(/'/g, "\\'")}', false)">بررسی این کیس با AI</button>`;
   }
 }
 
 async function runSingleCaseAi(caseKey, force = false) {
+  if (force && !window.confirm('این مورد قبلاً با AI تحلیل شده است. تحلیل مجدد سهمیه مصرف می‌کند. ادامه می‌دهید؟')) {
+    return;
+  }
   renderCaseAiActions(caseKey, true, true);
   const started = await api().start_case_ai_analysis(caseKey, force);
   if (!started.ok) {

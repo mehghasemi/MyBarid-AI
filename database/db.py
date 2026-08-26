@@ -226,6 +226,25 @@ def get_latest_ai_analysis(case_key: str, signature: str | None = None) -> dict 
         conn.close()
 
 
+def has_successful_ai_analysis(case_key: str, signature: str) -> bool:
+    """Return whether this exact Case/settings signature has a successful AI tag."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM ai_analysis_history
+            WHERE case_key = ? AND signature = ? AND success = 1
+            ORDER BY analyzed_at DESC, id DESC
+            LIMIT 1
+            """,
+            (case_key, signature),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
 def get_ai_suggestions(signature: str) -> list[dict]:
     conn = get_connection()
     try:

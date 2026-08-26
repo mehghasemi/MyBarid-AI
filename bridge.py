@@ -919,6 +919,17 @@ class Api:
                     self.ai_settings,
                 ),
             ),
+            "ai_tag": (
+                db.get_latest_ai_analysis(
+                    case.case_key,
+                    _case_signature(
+                        case,
+                        [c for _, c in self.config.active_criteria()
+                         if c.evaluation_type in ("AI", "HYBRID")],
+                        self.ai_settings,
+                    ),
+                )
+            ),
             "improvement_suggestions": db.get_ai_suggestions(
                 _case_signature(
                     case,
@@ -937,6 +948,15 @@ class Api:
             return {"ok": False, "error": "کیس پیدا نشد."}
         if not self.ai_settings.enabled or not self.ai_settings.api_key:
             return {"ok": False, "error": "تحلیل AI فعال نیست یا کلید API وارد نشده است."}
+        ai_criteria = [c for _, c in self.config.active_criteria()
+                       if c.evaluation_type in ("AI", "HYBRID")]
+        signature = _case_signature(case, ai_criteria, self.ai_settings)
+        if not force and db.has_successful_ai_analysis(case_key, signature):
+            return {
+                "ok": False,
+                "already_analyzed": True,
+                "error": "این مورد قبلاً با همین تنظیمات با موفقیت توسط AI تحلیل شده است. برای تحلیل مجدد تأیید کنید.",
+            }
         with self._lock:
             if self._case_ai_status.get(case_key, {}).get("running"):
                 return {"ok": True, "running": True, "case_key": case_key}
