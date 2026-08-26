@@ -1795,6 +1795,7 @@ function initApp() {
   if (appInitialized) return;
   if (!apiMethodsReady()) return; // هنوز کامل آماده نشده؛ Poll ادامه پیدا می‌کند
   appInitialized = true;
+  organizeInputSources();
   applyNavigationLabels();
   const loadingOverlay = document.getElementById('boot-loading');
   if (loadingOverlay) loadingOverlay.style.display = 'none';
@@ -1810,6 +1811,34 @@ function initApp() {
   api().get_version().then(v => {
     document.getElementById('app-version').textContent = 'نگارش: ' + v;
   }).catch(() => {});
+}
+
+function organizeInputSources() {
+  const page = document.getElementById('page-upload');
+  if (!page || page.dataset.sourcesOrganized === '1') return;
+  const crmCard = page.querySelector('button[onclick*="syncCrmView"]')?.closest('.card');
+  const fileGrid = page.querySelector('.grid.cols-2');
+  const uploadActions = document.getElementById('btn-upload')?.parentElement;
+  const autoCard = page.querySelector('.auto-input-card');
+  if (!crmCard || !fileGrid || !uploadActions || !autoCard) return;
+
+  const makeDetails = (title, nodes) => {
+    const details = document.createElement('details');
+    details.className = 'input-source-details';
+    const summary = document.createElement('summary');
+    summary.textContent = title;
+    details.appendChild(summary);
+    nodes.forEach(node => details.appendChild(node));
+    return details;
+  };
+
+  const crmDetails = makeDetails('اتصال خواندنی به Microsoft Dynamics 365', [crmCard]);
+  const fileDetails = makeDetails('بارگذاری و بازخوانی از فایل Excel', [
+    fileGrid, uploadActions, autoCard,
+  ]);
+  page.insertBefore(crmDetails, page.firstChild.nextSibling);
+  page.insertBefore(fileDetails, crmDetails.nextSibling);
+  page.dataset.sourcesOrganized = '1';
 }
 
 if (apiMethodsReady()) {
