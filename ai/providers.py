@@ -22,10 +22,10 @@ class AIQuotaError(AIProviderError):
 
 @dataclass
 class AISettings:
-    provider: str = "openai"  # openai | custom | gemini | disabled
+    provider: str = "custom"  # openai | custom | gemini | disabled
     api_key: str = ""
-    model: str = "gpt-4o-mini"
-    base_url: str = "https://api.openai.com/v1"  # برای custom/OpenAI-Compatible قابل تغییر
+    model: str = "openrouter/free"
+    base_url: str = "https://openrouter.ai/api/v1"  # برای custom/OpenAI-Compatible قابل تغییر
     temperature: float = 0.2
     max_tokens: int = 1200
     batch_size: int = 5

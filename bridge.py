@@ -480,6 +480,13 @@ class Api:
         """Built-in starter configurations; keys are never included or stored."""
         return [
             {
+                "id": "openrouter-free",
+                "name": "OpenRouter Free Router (پیشنهادی)",
+                "provider": "custom", "model": "openrouter/free",
+                "base_url": "https://openrouter.ai/api/v1",
+                "note": "نیازمند API Key رایگان OpenRouter؛ انتخاب خودکار مدل‌های رایگان",
+            },
+            {
                 "id": "gemini-flash",
                 "name": "Google Gemini 3.6 Flash (پیشنهادی)",
                 "provider": "gemini", "model": "gemini-3.6-flash",
@@ -490,13 +497,6 @@ class Api:
                 "name": "Google Gemini 3.6 Flash (گزینه جایگزین)",
                 "provider": "gemini", "model": "gemini-3.6-flash",
                 "base_url": "", "note": "نیازمند API Key رایگان Google AI Studio",
-            },
-            {
-                "id": "openrouter-free",
-                "name": "OpenRouter Free Router",
-                "provider": "custom", "model": "openrouter/free",
-                "base_url": "https://openrouter.ai/api/v1",
-                "note": "نیازمند API Key رایگان OpenRouter؛ انتخاب خودکار مدل‌های رایگان",
             },
             {
                 "id": "openrouter-llama-free",
