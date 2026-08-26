@@ -580,21 +580,43 @@ async function testCrmConnection() {
 
 async function syncCrmView() {
   const box = document.getElementById('crm-status');
+  const button = document.querySelector('button[onclick="syncCrmView()"]');
+  if (button) button.disabled = true;
   box.textContent = 'در حال دریافت داده از CRM...';
-  const res = await api().sync_crm_view(crmPayload());
-  if (!res.ok) { box.textContent = `خطا: ${res.error}`; return; }
-  setFileInputEnabled(false);
-  state.datasetLoaded = true;
-  state.dateBounds = res.date_bounds;
-  document.getElementById('dataset-status').textContent =
-    `${res.total_cases.toLocaleString('fa-IR')} مورد | داده CRM بارگذاری شد`;
-  box.textContent = `دریافت موفق: ${res.total_notes} Note و ${res.total_cases} مورد. ` +
-    `رکورد جدید/تغییریافته: ${res.new_or_changed_notes || 0}، بدون تغییر: ${res.unchanged_notes || 0}، حذف‌شده: ${res.deleted_notes || 0}. ` +
-    res.warning;
-  await initializeCaseSelection();
-  const password = document.getElementById('crm-password');
-  if (password) password.value = '';
-  toast('داده CRM با موفقیت دریافت شد', 'success');
+  try {
+    const started = await api().sync_crm_view(crmPayload());
+    if (!started.ok) { box.textContent = `خطا: ${started.error}`; return; }
+    const poll = async () => {
+      const status = await api().get_crm_sync_status();
+      if (status.running) {
+        box.textContent = status.stage || 'در حال دریافت داده از CRM...';
+        setTimeout(poll, 500);
+        return;
+      }
+      if (!status.done || !status.result) {
+        box.textContent = `خطا در دریافت CRM: ${status.error || 'پاسخ خالی از CRM'}`;
+        return;
+      }
+      const res = status.result;
+      setFileInputEnabled(false);
+      state.datasetLoaded = true;
+      state.dateBounds = res.date_bounds;
+      document.getElementById('dataset-status').textContent =
+        `${res.total_cases.toLocaleString('fa-IR')} مورد | داده CRM بارگذاری شد`;
+      box.textContent = `دریافت موفق: ${res.total_notes} Note و ${res.total_cases} مورد. ` +
+        `رکورد جدید/تغییریافته: ${res.new_or_changed_notes || 0}، بدون تغییر: ${res.unchanged_notes || 0}، حذف‌شده: ${res.deleted_notes || 0}. ` +
+        res.warning;
+      await initializeCaseSelection();
+      const password = document.getElementById('crm-password');
+      if (password) password.value = '';
+      toast('داده CRM با موفقیت دریافت شد', 'success');
+    };
+    await poll();
+  } catch (e) {
+    box.textContent = `خطا در دریافت CRM: ${e.message || e}`;
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 async function clearDataset() {

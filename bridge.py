@@ -73,6 +73,10 @@ class Api:
         self._analysis_generation = 0
         self._analysis_cancel_event: threading.Event | None = None
         self._case_ai_status: dict[str, dict] = {}
+        self._crm_sync_status = {
+            "running": False, "done": False, "error": None,
+            "stage": "", "result": None,
+        }
         self._lock = threading.Lock()
 
     def __dir__(self):
@@ -211,6 +215,46 @@ class Api:
             return {"ok": False, "views": [], "error": str(exc)}
 
     def sync_crm_view(self, payload: dict | None = None) -> dict:
+        """Start CRM synchronization without blocking the WebView UI."""
+        with self._lock:
+            if self._crm_sync_status.get("running"):
+                return {"ok": False, "error": "دریافت قبلی CRM هنوز در حال اجراست."}
+            self._crm_sync_status = {
+                "running": True, "done": False, "error": None,
+                "stage": "در حال اتصال به CRM...", "result": None,
+            }
+        thread = threading.Thread(
+            target=self._sync_crm_view_worker,
+            args=(copy.deepcopy(payload or {}),),
+            daemon=True,
+        )
+        thread.start()
+        return {"ok": True, "started": True}
+
+    def get_crm_sync_status(self) -> dict:
+        with self._lock:
+            return copy.deepcopy(self._crm_sync_status)
+
+    def _sync_crm_view_worker(self, payload: dict) -> None:
+        try:
+            with self._lock:
+                self._crm_sync_status["stage"] = "در حال دریافت View از CRM..."
+            result = self._perform_crm_sync(payload)
+            with self._lock:
+                self._crm_sync_status.update({
+                    "running": False, "done": True, "error": None,
+                    "stage": "دریافت اطلاعات کامل شد", "result": result,
+                })
+        except Exception as exc:  # noqa: BLE001
+            traceback.print_exc()
+            with self._lock:
+                self._crm_sync_status.update({
+                    "running": False, "done": False,
+                    "error": str(exc), "stage": "دریافت CRM ناموفق بود",
+                    "result": None,
+                })
+
+    def _perform_crm_sync(self, payload: dict) -> dict:
         payload = payload or {}
         settings = self.save_crm_settings(payload)
         client = DynamicsCRMClient(**self._crm_client_settings(settings, payload))
@@ -250,6 +294,9 @@ class Api:
             "fetched_at": metadata["fetched_at"], "total_cases": len(dataset.cases),
             "total_notes": len(dataset.notes), "total_tasks": 0,
             "date_bounds": self._dataset_date_bounds(dataset),
+            "new_or_changed_notes": metadata["new_or_changed_notes"],
+            "unchanged_notes": metadata["unchanged_notes"],
+            "deleted_notes": metadata["deleted_notes"],
             "warning": "در این مرحله فقط Noteهای View دریافت می‌شوند؛ Taskها هنوز از CRM خوانده نمی‌شوند.",
         }
 

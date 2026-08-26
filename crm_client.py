@@ -104,10 +104,18 @@ def _powershell_get_json(url: str, username: str = "", password: str = "") -> di
     env["MYBARID_CRM_USER"] = username or ""
     env["MYBARID_CRM_PASS"] = password or ""
     try:
+        startupinfo = None
+        creationflags = 0
+        if os.name == "nt":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         completed = subprocess.run(
             ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
             capture_output=True, text=True, encoding="utf-8", timeout=150,
-            env=env, check=False,
+            env=env, check=False, startupinfo=startupinfo,
+            creationflags=creationflags,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise CRMClientError(f"ارتباط با CRM برقرار نشد: {exc}") from exc
