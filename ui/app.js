@@ -1468,7 +1468,7 @@ function showCaseAiError(message) {
   toast('بررسی AI انجام نشد؛ جزئیات در پنجره کیس نمایش داده شد', 'error');
 }
 
-function renderCaseAiSuggestions(items) {
+function renderCaseAiSuggestionsLegacy(items) {
   const box = document.getElementById('case-ai-suggestions');
   if (!box) return;
   if (!items || !items.length) {
@@ -1498,6 +1498,52 @@ function renderCaseAiSuggestions(items) {
             مشکل: ${escapeHtml(item.problem)}<br>
             پیشنهاد: ${escapeHtml(item.suggestion)}<br>
             شواهد: ${escapeHtml(item.evidence)}
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+function renderCaseAiSuggestions(items) {
+  const box = document.getElementById('case-ai-suggestions');
+  if (!box) return;
+  if (!items || !items.length) {
+    box.innerHTML = '';
+    return;
+  }
+  const typeNames = {
+    add_pattern: 'افزودن واژه یا الگو به قانون موجود',
+    activate_criterion: 'فعال‌سازی معیار برای نوع مورد یا سرویس',
+    new_rule: 'پیشنهاد ایجاد قانون جدید',
+  };
+  const criterionNames = {
+    notes_result_recorded: 'ثبت نتیجه اقدام در یادداشت‌ها',
+    task_presence_when_needed: 'وجود Task در مواردی که واقعاً لازم است',
+    final_status_clear: 'شفاف‌بودن وضعیت نهایی مورد',
+    solution_appropriateness: 'مناسب‌بودن راه‌حل ارائه‌شده',
+    problem_understanding: 'درک صحیح مسئله',
+  };
+  const confidenceNames = { high: 'اطمینان زیاد', medium: 'اطمینان متوسط', low: 'اطمینان کم' };
+  box.innerHTML = `
+    <div class="card" style="border-right:4px solid var(--accent);padding:14px">
+      <div style="font-weight:700;font-size:15px;margin-bottom:8px">پیشنهادهای بهبود معیارها</div>
+      <div style="font-size:12px;line-height:1.9;color:var(--muted);margin-bottom:12px">
+        این بخش نتیجه بررسی AI است و برای بهترشدن Rule Base پیشنهاد ارائه می‌کند.
+        پیشنهادها هنوز تأیید نشده‌اند؛ بنابراین هیچ معیار، قانون یا امتیازی خودکار تغییر نمی‌کند.
+        پس از بررسی شواهد، در صورت تأیید می‌توانید تغییر را از بخش «معیارها و وزن‌ها» اعمال کنید.
+      </div>
+      ${items.map(item => `
+        <div style="padding:12px 0;border-top:1px solid var(--border)">
+          <div style="font-weight:600;font-size:13px;margin-bottom:7px">${escapeHtml(item.title || 'پیشنهاد بهبود')}
+            <span class="badge muted">${escapeHtml(typeNames[item.type] || item.type || 'نوع پیشنهاد مشخص نشده')}</span>
+          </div>
+          <div style="font-size:12px;line-height:1.9">
+            <div><b>معیار مرتبط:</b> ${escapeHtml(criterionNames[item.criterion_id] || item.criterion_id || 'مشخص نشده')}</div>
+            <div><b>میزان اطمینان AI:</b> ${escapeHtml(confidenceNames[item.confidence] || 'نامشخص')}</div>
+          </div>
+          <div style="font-size:12px;line-height:1.9;color:var(--muted);margin-top:7px">
+            <div><b>مشکل یا الگوی شناسایی‌شده:</b> ${escapeHtml(item.problem || 'موردی ثبت نشده است.')}</div>
+            <div><b>پیشنهاد عملی:</b> ${escapeHtml(item.suggestion || 'پیشنهاد تکمیلی ارائه نشده است.')}</div>
+            <div><b>شواهد مورد استفاده:</b> ${escapeHtml(item.evidence || 'شواهد کافی ثبت نشده است.')}</div>
           </div>
         </div>`).join('')}
     </div>`;
