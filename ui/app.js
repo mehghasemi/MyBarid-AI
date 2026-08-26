@@ -556,7 +556,11 @@ async function pollStatus() {
   const status = await api().get_status();
   const total = status.total || 1;
   const pct = status.total ? Math.round((status.current / status.total) * 100) : 0;
-  document.getElementById('progress-label').textContent = `${status.stage || ''} ${status.total ? `(${status.current}/${status.total})` : ''}`;
+  const selectionHint = status.selected_case_count !== undefined
+    ? ` | موارد انتخاب‌شده: ${status.selected_case_count.toLocaleString('fa-IR')}`
+    : '';
+  document.getElementById('progress-label').textContent =
+    `${status.stage || ''} ${status.total ? `(${status.current}/${status.total})` : ''}${selectionHint}`;
   document.getElementById('progress-fill').style.width = pct + '%';
 
   if (status.error) {

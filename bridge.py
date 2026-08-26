@@ -643,28 +643,26 @@ class Api:
             # خود Dataset کاری Worker فقط شامل انتخاب‌های کاربر است.
             # این محدودسازی مستقل از فیلترهای UI و منطق هر Mode عمل می‌کند.
             analysis_dataset = dataset
-            if unit == "case" and selected_case_keys is not None:
+            if selected_case_keys is not None:
                 analysis_dataset = copy.copy(dataset)
                 selected_bundles = {
                     key: case for key, case in dataset.cases.items()
                     if key in selected_case_keys
                 }
-                analysis_dataset.cases = {
-                    key: case for key, case in selected_bundles.items()
-                }
+                analysis_dataset.cases = dict(selected_bundles)
                 selected_task_ids = {
                     id(link.task)
                     for case in selected_bundles.values()
                     for link in case.task_links
                 }
-                analysis_dataset.notes = [
-                    note for note in dataset.notes
-                    if note.case_key in selected_case_keys
-                ]
                 analysis_dataset.tasks = [
                     task for task in dataset.tasks
                     if id(task) in selected_task_ids
                     or (task.case_number and task.case_number in selected_case_keys)
+                ]
+                analysis_dataset.notes = [
+                    note for note in dataset.notes
+                    if note.case_key in selected_case_keys
                 ]
             result = (
                 run_general_analysis(
@@ -685,6 +683,11 @@ class Api:
                     if result.get("mode") == "general"
                     else len(set(result["period1"].cases) | set(result["period2"].cases))
                 )
+                if unit == "case" and analyzed_count != len(selected_case_keys or ()):
+                    raise RuntimeError(
+                        f"تعداد موارد تحلیل‌شده با انتخاب شما همخوان نیست: "
+                        f"{analyzed_count} از {len(selected_case_keys or ())} مورد."
+                    )
                 self.result = result
                 self.status.update({
                     "running": False, "done": True, "stage": "پایان یافت",
