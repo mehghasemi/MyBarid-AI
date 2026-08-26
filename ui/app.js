@@ -545,13 +545,8 @@ async function loadCrmSettings() {
   if (s.last_snapshot) {
     const m = s.last_snapshot.metadata || {};
     document.getElementById('crm-status').textContent =
-      `آخرین Snapshot: ${m.fetched_at || s.last_snapshot.fetched_at} — View: ${s.last_snapshot.view_name}`;
-    state.datasetLoaded = true;
-    state.dateBounds = null;
-    document.getElementById('dataset-status').textContent = 'داده قبلی CRM بازیابی شد';
-    initializeCaseSelection();
+      `آخرین دریافت ذخیره‌شده: ${m.fetched_at || s.last_snapshot.fetched_at} — View: ${s.last_snapshot.view_name}. برای دریافت جدید دکمه واکشی را بزنید.`;
   }
-  loadCrmViews();
 }
 
 async function loadCrmViews() {
@@ -593,7 +588,9 @@ async function syncCrmView() {
   state.dateBounds = res.date_bounds;
   document.getElementById('dataset-status').textContent =
     `${res.total_cases.toLocaleString('fa-IR')} مورد | داده CRM بارگذاری شد`;
-  box.textContent = `دریافت موفق: ${res.total_notes} Note و ${res.total_cases} مورد — ${res.warning}`;
+  box.textContent = `دریافت موفق: ${res.total_notes} Note و ${res.total_cases} مورد. ` +
+    `رکورد جدید/تغییریافته: ${res.new_or_changed_notes || 0}، بدون تغییر: ${res.unchanged_notes || 0}، حذف‌شده: ${res.deleted_notes || 0}. ` +
+    res.warning;
   await initializeCaseSelection();
   const password = document.getElementById('crm-password');
   if (password) password.value = '';
@@ -1831,7 +1828,7 @@ function initApp() {
   loadAiSettings();
   loadExpertGroupsSettings();
   loadCrmSettings();
-  autoLoadDefaultFiles();
+  // هیچ منبع داده‌ای هنگام شروع خودکار خوانده نمی‌شود؛ کاربر باید منبع را صریحاً انتخاب کند.
   buildJalaliPicker('p1-start-picker');
   buildJalaliPicker('p1-end-picker');
   buildJalaliPicker('p2-start-picker');

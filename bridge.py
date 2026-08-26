@@ -74,7 +74,6 @@ class Api:
         self._analysis_cancel_event: threading.Event | None = None
         self._case_ai_status: dict[str, dict] = {}
         self._lock = threading.Lock()
-        self._restore_latest_crm_snapshot()
 
     def __dir__(self):
         """Expose only API methods to pywebview's bridge introspection.
@@ -219,8 +218,28 @@ class Api:
             dataset, metadata = client.fetch_view_dataset()
         except CRMClientError as exc:
             return {"ok": False, "error": str(exc)}
+        previous = db.get_latest_crm_snapshot()
+        previous_notes = {
+            str(row.get("note_id")): row for row in
+            ((previous or {}).get("payload") or {}).get("notes", [])
+            if row.get("note_id")
+        }
+        current_payload = dataset_to_payload(dataset)
+        current_notes = {
+            str(row.get("note_id")): row for row in current_payload.get("notes", [])
+            if row.get("note_id")
+        }
+        changed_keys = [
+            key for key, row in current_notes.items()
+            if key not in previous_notes or row != previous_notes[key]
+        ]
+        metadata.update({
+            "new_or_changed_notes": len(changed_keys),
+            "unchanged_notes": max(0, len(current_notes) - len(changed_keys)),
+            "deleted_notes": len(set(previous_notes) - set(current_notes)),
+        })
         db.save_crm_snapshot("dynamics365", settings["view_name"], metadata["fetched_at"],
-                             metadata, dataset_to_payload(dataset))
+                             metadata, current_payload)
         db.set_setting("data_source", "crm")
         with self._lock:
             self._analysis_generation += 1
@@ -233,15 +252,6 @@ class Api:
             "date_bounds": self._dataset_date_bounds(dataset),
             "warning": "در این مرحله فقط Noteهای View دریافت می‌شوند؛ Taskها هنوز از CRM خوانده نمی‌شوند.",
         }
-
-    def _restore_latest_crm_snapshot(self):
-        snapshot = db.get_latest_crm_snapshot()
-        if not snapshot:
-            return
-        try:
-            self.dataset = dataset_from_payload(snapshot["payload"])
-        except (KeyError, TypeError, ValueError):
-            self.dataset = None
 
     @staticmethod
     def _dataset_date_bounds(dataset: Dataset) -> dict:
