@@ -84,16 +84,25 @@ def _display(row: dict, *names: str):
     return None
 
 
-def _powershell_get_json(url: str) -> dict:
+def _powershell_get_json(url: str, username: str = "", password: str = "") -> dict:
     # Keep the URL outside the command text to avoid command injection.
     command = (
         "$u=$env:MYBARID_CRM_URL; "
-        "$r=Invoke-WebRequest -Uri $u -UseDefaultCredentials -Headers "
-        "@{Accept='application/json';'OData-Version'='4.0'} -TimeoutSec 120; "
-        "$r.Content"
+        "if ($env:MYBARID_CRM_USER -and $env:MYBARID_CRM_PASS) { "
+        "$sec=ConvertTo-SecureString $env:MYBARID_CRM_PASS -AsPlainText -Force; "
+        "$cred=New-Object System.Management.Automation.PSCredential("
+        "$env:MYBARID_CRM_USER,$sec); "
+        "$r=Invoke-WebRequest -Uri $u -Credential $cred "
+        "-Headers @{Accept='application/json';'OData-Version'='4.0'} -TimeoutSec 120 "
+        "} else { "
+        "$r=Invoke-WebRequest -Uri $u -UseDefaultCredentials "
+        "-Headers @{Accept='application/json';'OData-Version'='4.0'} -TimeoutSec 120 "
+        "}; $r.Content"
     )
     env = os.environ.copy()
     env["MYBARID_CRM_URL"] = url
+    env["MYBARID_CRM_USER"] = username or ""
+    env["MYBARID_CRM_PASS"] = password or ""
     try:
         completed = subprocess.run(
             ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
@@ -121,11 +130,15 @@ class DynamicsCRMClient:
         organization: str = DEFAULT_ORGANIZATION,
         api_version: str = DEFAULT_API_VERSION,
         view_name: str = DEFAULT_VIEW_NAME,
+        username: str = "",
+        password: str = "",
     ):
         self.base_url = base_url.rstrip("/")
         self.organization = organization.strip("/")
         self.api_version = api_version.strip("/")
         self.view_name = view_name
+        self.username = username
+        self.password = password
 
     @property
     def api_root(self) -> str:
@@ -137,7 +150,7 @@ class DynamicsCRMClient:
             "$select=name,userqueryid,returnedtypecode,fetchxml"
             f"&$filter=name%20eq%20'{quote(self.view_name)}'"
         )
-        payload = _powershell_get_json(query)
+        payload = _powershell_get_json(query, self.username, self.password)
         values = payload.get("value") or []
         if not values:
             raise CRMClientError(
@@ -156,7 +169,8 @@ class DynamicsCRMClient:
             ("savedqueries", "savedqueryid", "سازمانی"),
         ):
             select = f"$select=name,{id_key},returnedtypecode"
-            payload = _powershell_get_json(f"{self.api_root}/{entity}?{select}")
+            payload = _powershell_get_json(f"{self.api_root}/{entity}?{select}",
+                                           self.username, self.password)
             for row in payload.get("value") or []:
                 if row.get("returnedtypecode") == "annotation" and row.get("name"):
                     views.append({
@@ -167,7 +181,8 @@ class DynamicsCRMClient:
         return sorted(unique.values(), key=lambda item: item["name"].casefold())
 
     def test_connection(self) -> dict:
-        payload = _powershell_get_json(f"{self.api_root}/WhoAmI")
+        payload = _powershell_get_json(f"{self.api_root}/WhoAmI",
+                                       self.username, self.password)
         return {"ok": True, "api_root": self.api_root, "user": payload}
 
     def fetch_view_dataset(self) -> tuple[Dataset, dict]:
@@ -176,7 +191,7 @@ class DynamicsCRMClient:
         if not fetchxml:
             raise CRMClientError("View فاقد FetchXML قابل اجرا است.")
         url = f"{self.api_root}/annotations?fetchXml={quote(fetchxml, safe='')}"
-        payload = _powershell_get_json(url)
+        payload = _powershell_get_json(url, self.username, self.password)
         rows = payload.get("value") or []
         notes: list[NoteRecord] = []
         for row in rows:

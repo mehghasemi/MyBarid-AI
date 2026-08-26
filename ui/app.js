@@ -461,6 +461,12 @@ async function autoLoadDefaultFiles() {
   const box = document.getElementById('auto-input-info');
   if (!box) return;
   try {
+    const crm = await api().get_crm_settings();
+    if (crm.data_source === 'crm' && crm.last_snapshot) {
+      box.innerHTML = 'منبع فعال CRM است؛ فایل‌های Excel خودکار خوانده نشدند.';
+      setFileInputEnabled(false);
+      return;
+    }
     const info = await api().get_auto_input_info();
     box.innerHTML = `پوشه ورودی: <code>${escapeHtml(info.directory)}</code><br>
       Notes: <code>notes.xlsx</code> — Tasks: <code>tasks.xlsx</code>`;
@@ -485,7 +491,25 @@ function crmPayload() {
     organization: document.getElementById('crm-organization').value.trim(),
     api_version: 'v9.1',
     view_name: document.getElementById('crm-view-name').value.trim(),
+    username: document.getElementById('crm-username')?.value.trim() || '',
+    password: document.getElementById('crm-password')?.value || '',
   };
+}
+
+function setFileInputEnabled(enabled) {
+  ['btn-upload', 'btn-file-notes', 'btn-file-tasks', 'btn-auto-files'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !enabled;
+  });
+  const hint = document.getElementById('file-source-disabled');
+  if (hint) hint.style.display = enabled ? 'none' : 'block';
+}
+
+function useFileSource() {
+  setFileInputEnabled(true);
+  api().set_data_source('file');
+  const hint = document.getElementById('file-source-disabled');
+  if (hint) hint.textContent = 'ورودی فایل فعال شد.';
 }
 
 function ensureCrmViewSelector() {
@@ -517,6 +541,7 @@ async function loadCrmSettings() {
   document.getElementById('crm-base-url').value = s.base_url || '';
   document.getElementById('crm-organization').value = s.organization || '';
   document.getElementById('crm-view-name').value = s.view_name || '';
+  setFileInputEnabled(s.data_source !== 'crm');
   if (s.last_snapshot) {
     const m = s.last_snapshot.metadata || {};
     document.getElementById('crm-status').textContent =
@@ -563,12 +588,15 @@ async function syncCrmView() {
   box.textContent = 'در حال دریافت داده از CRM...';
   const res = await api().sync_crm_view(crmPayload());
   if (!res.ok) { box.textContent = `خطا: ${res.error}`; return; }
+  setFileInputEnabled(false);
   state.datasetLoaded = true;
   state.dateBounds = res.date_bounds;
   document.getElementById('dataset-status').textContent =
     `${res.total_cases.toLocaleString('fa-IR')} مورد | داده CRM بارگذاری شد`;
   box.textContent = `دریافت موفق: ${res.total_notes} Note و ${res.total_cases} مورد — ${res.warning}`;
   await initializeCaseSelection();
+  const password = document.getElementById('crm-password');
+  if (password) password.value = '';
   toast('داده CRM با موفقیت دریافت شد', 'success');
 }
 

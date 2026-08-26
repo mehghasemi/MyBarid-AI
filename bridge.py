@@ -166,8 +166,14 @@ class Api:
             "organization": stored.get("organization", DEFAULT_ORGANIZATION),
             "api_version": stored.get("api_version", DEFAULT_API_VERSION),
             "view_name": stored.get("view_name", DEFAULT_VIEW_NAME),
+            "data_source": db.get_setting("data_source", "crm"),
             "last_snapshot": db.get_latest_crm_snapshot(),
         }
+
+    def set_data_source(self, source: str) -> dict:
+        value = "crm" if source == "crm" else "file"
+        db.set_setting("data_source", value)
+        return {"ok": True, "data_source": value}
 
     def save_crm_settings(self, payload: dict) -> dict:
         settings = {
@@ -179,34 +185,43 @@ class Api:
         db.set_setting("crm_settings", settings)
         return {"ok": True, **settings}
 
+    @staticmethod
+    def _crm_client_settings(settings: dict, payload: dict) -> dict:
+        return {
+            **{key: settings[key] for key in ("base_url", "organization", "api_version", "view_name")},
+            "username": str(payload.get("username") or ""),
+            "password": str(payload.get("password") or ""),
+        }
+
     def test_crm_connection(self, payload: dict | None = None) -> dict:
-        settings = self.save_crm_settings(payload or {})
+        payload = payload or {}
+        settings = self.save_crm_settings(payload)
         try:
-            result = DynamicsCRMClient(**{key: settings[key] for key in (
-                "base_url", "organization", "api_version", "view_name")}).test_connection()
+            result = DynamicsCRMClient(**self._crm_client_settings(settings, payload)).test_connection()
             return {"ok": True, "api_root": result["api_root"]}
         except CRMClientError as exc:
             return {"ok": False, "error": str(exc)}
 
     def get_crm_views(self, payload: dict | None = None) -> dict:
-        settings = self.save_crm_settings(payload or {})
+        payload = payload or {}
+        settings = self.save_crm_settings(payload)
         try:
-            client = DynamicsCRMClient(**{key: settings[key] for key in (
-                "base_url", "organization", "api_version", "view_name")})
+            client = DynamicsCRMClient(**self._crm_client_settings(settings, payload))
             return {"ok": True, "views": client.list_note_views()}
         except CRMClientError as exc:
             return {"ok": False, "views": [], "error": str(exc)}
 
     def sync_crm_view(self, payload: dict | None = None) -> dict:
-        settings = self.save_crm_settings(payload or {})
-        client = DynamicsCRMClient(**{key: settings[key] for key in (
-            "base_url", "organization", "api_version", "view_name")})
+        payload = payload or {}
+        settings = self.save_crm_settings(payload)
+        client = DynamicsCRMClient(**self._crm_client_settings(settings, payload))
         try:
             dataset, metadata = client.fetch_view_dataset()
         except CRMClientError as exc:
             return {"ok": False, "error": str(exc)}
         db.save_crm_snapshot("dynamics365", settings["view_name"], metadata["fetched_at"],
                              metadata, dataset_to_payload(dataset))
+        db.set_setting("data_source", "crm")
         with self._lock:
             self._analysis_generation += 1
             self.dataset = dataset
@@ -309,6 +324,7 @@ class Api:
             self._analysis_generation += 1
             self.result = None
             self.status = {"running": False, "done": False, "cancelled": False, "stage": "", "current": 0, "total": 0, "error": None}
+        db.set_setting("data_source", "file")
         ns, ts = self.dataset.notes_summary, self.dataset.tasks_summary
         dates = [n.note_date for n in self.dataset.notes if n.note_date] + \
                 [t.created_on for t in self.dataset.tasks if t.created_on]

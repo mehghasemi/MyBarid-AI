@@ -166,7 +166,7 @@
           <h3>فایل Notes</h3>
           <div class="upload-box">
             <div>📄 فایل حاوی Note های مورد</div>
-            <button class="btn primary" style="margin-top:12px" onclick="pickFile('notes')">انتخاب فایل...</button>
+            <button class="btn primary" id="btn-file-notes" style="margin-top:12px" onclick="pickFile('notes')">انتخاب فایل...</button>
             <div class="file-name" id="notes-file-name">فایلی انتخاب نشده</div>
           </div>
         </div>
@@ -174,7 +174,7 @@
           <h3>فایل Tasks</h3>
           <div class="upload-box">
             <div>📄 فایل حاوی Task های کارشناسان</div>
-            <button class="btn primary" style="margin-top:12px" onclick="pickFile('tasks')">انتخاب فایل...</button>
+            <button class="btn primary" id="btn-file-tasks" style="margin-top:12px" onclick="pickFile('tasks')">انتخاب فایل...</button>
             <div class="file-name" id="tasks-file-name">فایلی انتخاب نشده</div>
           </div>
         </div>
@@ -189,7 +189,11 @@
         <h3>بارگذاری خودکار هنگام اجرای برنامه</h3>
         <p class="page-sub">دو فایل Excel با نام‌های ثابت را در پوشه زیر قرار دهید تا در شروع برنامه خودکار بارگذاری شوند.</p>
         <div id="auto-input-info" class="muted-box">در حال بررسی پوشه ورودی...</div>
-        <button class="btn" style="margin-top:10px" onclick="autoLoadDefaultFiles()">بازخوانی فایل‌های ورودی</button>
+        <button class="btn" id="btn-auto-files" style="margin-top:10px" onclick="autoLoadDefaultFiles()">بازخوانی فایل‌های ورودی</button>
+        <div id="file-source-disabled" class="muted-box" style="display:none;margin-top:10px">
+          منبع فعال CRM است. برای استفاده از Excel ابتدا «فعال‌سازی ورود از فایل» را بزنید.
+          <button class="btn" style="margin-top:8px" onclick="useFileSource()">فعال‌سازی ورود از فایل</button>
+        </div>
       </div>
 
       <div class="card" style="margin-top:16px">
@@ -198,6 +202,8 @@
         <div class="row">
           <div class="field"><label class="field-label">آدرس CRM</label><input id="crm-base-url" value="https://crm.baridsoft.ir"></div>
           <div class="field"><label class="field-label">سازمان</label><input id="crm-organization" value="Main"></div>
+          <div class="field"><label class="field-label">نام کاربری CRM <span class="muted">(اختیاری)</span></label><input id="crm-username" autocomplete="username" placeholder="DOMAIN\username"></div>
+          <div class="field"><label class="field-label">رمز عبور CRM <span class="muted">(ذخیره نمی‌شود)</span></label><input id="crm-password" type="password" autocomplete="current-password"></div>
           <div class="field"><label class="field-label">نام View</label><input id="crm-view-name" value="TESTNOTE"></div>
         </div>
         <div id="crm-status" class="muted-box">وضعیت اتصال CRM هنوز بررسی نشده است.</div>
