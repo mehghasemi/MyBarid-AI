@@ -188,6 +188,15 @@ class Api:
         except CRMClientError as exc:
             return {"ok": False, "error": str(exc)}
 
+    def get_crm_views(self, payload: dict | None = None) -> dict:
+        settings = self.save_crm_settings(payload or {})
+        try:
+            client = DynamicsCRMClient(**{key: settings[key] for key in (
+                "base_url", "organization", "api_version", "view_name")})
+            return {"ok": True, "views": client.list_note_views()}
+        except CRMClientError as exc:
+            return {"ok": False, "views": [], "error": str(exc)}
+
     def sync_crm_view(self, payload: dict | None = None) -> dict:
         settings = self.save_crm_settings(payload or {})
         client = DynamicsCRMClient(**{key: settings[key] for key in (

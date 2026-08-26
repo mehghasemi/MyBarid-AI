@@ -488,7 +488,30 @@ function crmPayload() {
   };
 }
 
+function ensureCrmViewSelector() {
+  const input = document.getElementById('crm-view-name');
+  if (!input) return null;
+  if (input.tagName === 'SELECT') return input;
+  const select = document.createElement('select');
+  select.id = input.id;
+  select.className = input.className;
+  select.innerHTML = '<option value="TESTNOTE">TESTNOTE (پیش‌فرض)</option>';
+  select.value = input.value || 'TESTNOTE';
+  input.replaceWith(select);
+  const status = document.getElementById('crm-status');
+  if (status && !document.getElementById('crm-load-views')) {
+    const button = document.createElement('button');
+    button.id = 'crm-load-views';
+    button.className = 'btn';
+    button.textContent = 'دریافت فهرست Viewها';
+    button.onclick = loadCrmViews;
+    status.parentNode.insertBefore(button, status);
+  }
+  return select;
+}
+
 async function loadCrmSettings() {
+  ensureCrmViewSelector();
   const s = await api().get_crm_settings();
   if (!s) return;
   document.getElementById('crm-base-url').value = s.base_url || '';
@@ -503,6 +526,29 @@ async function loadCrmSettings() {
     document.getElementById('dataset-status').textContent = 'داده قبلی CRM بازیابی شد';
     initializeCaseSelection();
   }
+  loadCrmViews();
+}
+
+async function loadCrmViews() {
+  const select = ensureCrmViewSelector();
+  if (!select) return;
+  const current = select.value || 'TESTNOTE';
+  select.innerHTML = '<option value="">در حال دریافت فهرست Viewها...</option>';
+  const res = await api().get_crm_views({
+    base_url: document.getElementById('crm-base-url').value.trim(),
+    organization: document.getElementById('crm-organization').value.trim(),
+    api_version: 'v9.1',
+    view_name: current,
+  });
+  if (!res.ok) {
+    select.innerHTML = `<option value="${escapeHtml(current)}">${escapeHtml(current)} (پشتیبان)</option>`;
+    document.getElementById('crm-status').textContent = `دریافت Viewها ناموفق بود: ${res.error}`;
+    return;
+  }
+  select.innerHTML = res.views.length
+    ? res.views.map(v => `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name)} — ${escapeHtml(v.scope)}</option>`).join('')
+    : '<option value="">View مربوط به Note پیدا نشد</option>';
+  if (res.views.some(v => v.name === current)) select.value = current;
 }
 
 async function testCrmConnection() {

@@ -148,6 +148,24 @@ class DynamicsCRMClient:
             raise CRMClientError("View انتخاب‌شده روی موجودیت Note/annotation نیست.")
         return view
 
+    def list_note_views(self) -> list[dict]:
+        """Return readable personal/system Note views for the current Windows user."""
+        views: list[dict] = []
+        for entity, id_key, scope in (
+            ("userqueries", "userqueryid", "شخصی"),
+            ("savedqueries", "savedqueryid", "سازمانی"),
+        ):
+            select = f"$select=name,{id_key},returnedtypecode"
+            payload = _powershell_get_json(f"{self.api_root}/{entity}?{select}")
+            for row in payload.get("value") or []:
+                if row.get("returnedtypecode") == "annotation" and row.get("name"):
+                    views.append({
+                        "id": row.get(id_key), "name": row["name"],
+                        "scope": scope, "kind": entity,
+                    })
+        unique = {f"{item['kind']}:{item['id']}": item for item in views}
+        return sorted(unique.values(), key=lambda item: item["name"].casefold())
+
     def test_connection(self) -> dict:
         payload = _powershell_get_json(f"{self.api_root}/WhoAmI")
         return {"ok": True, "api_root": self.api_root, "user": payload}
