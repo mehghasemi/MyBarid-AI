@@ -252,6 +252,11 @@ def run_general_analysis(
             if not expert_filter or (t.created_by or "") in expert_filter
         ]) if unit == "task" else cases
     )
+    if progress_cb:
+        progress_cb("در حال بررسی موارد نیازمند بررسی", 0, len(suspicious_pool))
+    suspicious = find_suspicious_cases(suspicious_pool)
+    if progress_cb:
+        progress_cb("در حال بررسی موارد نیازمند بررسی", len(suspicious_pool), len(suspicious_pool))
     return {
         "mode": "general", "general": general, "general_score": overall,
         "general_categories": categories, "general_criteria": criteria,
@@ -261,5 +266,5 @@ def run_general_analysis(
         ),
         "experts_general": experts, "ranking": ranking,
         "data_health_checks": health_checks, "data_health_index": health_index,
-        "suspicious": find_suspicious_cases(suspicious_pool), "unit": unit,
+        "suspicious": suspicious, "unit": unit,
     }
