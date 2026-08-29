@@ -103,11 +103,7 @@ class Api:
                 db.set_setting("data_source", "crm")
                 saved = db.get_local_analysis_record()
                 snapshot_id = _dataset_id(snapshot)
-                if saved and saved.get("result") and (
-                    not saved.get("dataset_id")
-                    or saved.get("dataset_id") == snapshot_id
-                    or saved.get("dataset_id_version", 1) < 2
-                ):
+                if saved and saved.get("result"):
                     self.result = saved["result"]
                     if saved.get("dataset_id_version", 1) < 2 and snapshot_id:
                         db.save_local_analysis(
@@ -387,14 +383,10 @@ class Api:
         with self._lock:
             self._analysis_generation += 1
             self.dataset = dataset
-            # Keep the previous result available when the View content did
-            # not change. If content changed, the result is intentionally
-            # hidden until the user runs a new analysis.
-            self.result = (
-                previous_analysis.get("result")
-                if previous_analysis and previous_analysis.get("dataset_id") == current_id
-                else None
-            )
+            # Keep the previous result available even when the Snapshot
+            # changed. The UI marks it as stale, while the user can still
+            # inspect the previous report and explicitly run a new analysis.
+            self.result = previous_analysis.get("result") if previous_analysis else None
         return {
             "ok": True, "source": "CRM", "view_name": settings["view_name"],
             "fetched_at": metadata["fetched_at"], "total_cases": len(dataset.cases),
