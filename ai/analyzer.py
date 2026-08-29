@@ -12,7 +12,7 @@ from config.criteria_config import CriteriaConfig
 from data.cleaner import CaseBundle
 from database import db
 
-MAX_RETRIES = 2
+MAX_RETRIES = 0
 IMPROVEMENT_CRITERIA = {
     "notes_result_recorded", "task_presence_when_needed", "final_status_clear",
     "solution_appropriateness", "problem_understanding",
@@ -91,11 +91,10 @@ def analyze_case(
             # خطای سهمیه با Retry کوتاه حل نمی‌شود؛ از ارسال درخواست‌های تکراری جلوگیری کن.
             return {}, str(exc)
         except AIProviderError as exc:
-            last_error = str(exc)
-            if cancel_check:
-                cancel_check()
-            time.sleep(1.5 * (attempt + 1))
-            continue
+            # Authentication, model, quota and provider-response errors are
+            # deterministic for the current request. Retrying them wastes
+            # time and may consume the user's AI quota again.
+            return {}, str(exc)
         if cancel_check:
             cancel_check()
         try:
@@ -105,7 +104,7 @@ def analyze_case(
             continue
         if payload is None:
             last_error = "خروجی AI یک JSON معتبر نبود."
-            continue
+            return {}, last_error
         try:
             valid, problems = validate_case_analysis(payload, criteria_ids)
         except Exception as exc:  # noqa: BLE001
@@ -113,12 +112,12 @@ def analyze_case(
             continue
         if not valid:
             last_error = f"خروجی AI ناقص بود (فیلدهای مشکل‌دار: {', '.join(problems)})."
-            continue
+            return {}, last_error
         try:
             scores = _payload_to_scores(payload, criteria_ids)
             if not scores:
                 last_error = "پاسخ سرویس AI برای هیچ‌یک از معیارهای فعال امتیاز معتبر برنگرداند."
-                continue
+                return {}, last_error
             if use_cache:
                 db.set_ai_cache(sig, payload)
             db.set_ai_suggestions(sig, _extract_improvement_suggestions(payload))
@@ -128,7 +127,7 @@ def analyze_case(
             return scores, None
         except (AttributeError, KeyError, TypeError, ValueError, IndexError) as exc:
             last_error = f"ساختار امتیازهای AI قابل استفاده نبود: {exc}"
-            continue
+            return {}, last_error
 
     return {}, last_error or "تحلیل AI برای این Case ناموفق بود."
 

@@ -20,6 +20,9 @@ class AIQuotaError(AIProviderError):
     """سهمیه/نرخ مجاز Provider تمام شده و Retry فوری فایده ندارد."""
 
 
+AI_REQUEST_TIMEOUT_SECONDS = 45
+
+
 @dataclass
 class AISettings:
     provider: str = "custom"  # openai | custom | gemini | disabled
@@ -58,7 +61,9 @@ class OpenAICompatibleProvider(BaseProvider):
             headers["Authorization"] = f"Bearer {settings.api_key}"
         request = urllib.request.Request(url, data=payload, headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(request, timeout=120) as response:
+            with urllib.request.urlopen(
+                request, timeout=AI_REQUEST_TIMEOUT_SECONDS
+            ) as response:
                 data = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", "replace")
@@ -104,7 +109,9 @@ class GeminiProvider(BaseProvider):
         }).encode("utf-8")
         request = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
         try:
-            with urllib.request.urlopen(request, timeout=120) as response:
+            with urllib.request.urlopen(
+                request, timeout=AI_REQUEST_TIMEOUT_SECONDS
+            ) as response:
                 data = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", "replace")
