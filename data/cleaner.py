@@ -59,6 +59,26 @@ class CaseBundle:
         events.sort(key=lambda e: e[1])
         return events
 
+    @property
+    def ai_events_sorted(self):
+        """All substantive events for semantic AI evaluation.
+
+        Temporal Rule calculations continue to use ``all_events_sorted``.
+        AI must also receive a Note/Task whose text exists but whose date is
+        missing or malformed, because its text can still be valid evidence.
+        """
+        events = []
+        for n in self.notes:
+            if n.description or n.note_date:
+                events.append(("note", n.note_date, n))
+        for link in self.task_links:
+            task = link.task
+            when = task.created_on or task.actual_start
+            if task.description or task.subject or when:
+                events.append(("task", when, task))
+        events.sort(key=lambda event: (event[1] is None, event[1] or datetime.max))
+        return events
+
 
 def _normalize_title(text: str | None) -> str:
     if not text:

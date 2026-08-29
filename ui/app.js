@@ -15,6 +15,7 @@ const state = {
   casesPage: 0,
   casesPageSize: 25,
   selectedCaseKeys: new Set(),
+  staleNoticeShown: false,
   caseSelectionPage: 0,
   caseSelectionPageSize: 50,
   caseSelectionTotal: 0,
@@ -96,8 +97,9 @@ async function showPage(name) {
         return;
       }
       state.analysisDone = !!info?.loaded;
-      if (info.stale) {
+      if (info.stale && !state.staleNoticeShown) {
         toast('نتیجه موجود مربوط به Snapshot قبلی است؛ برای داده جدید تحلیل را اجرا کنید.', 'warn');
+        state.staleNoticeShown = true;
       }
     } catch (error) {
       toast(`وضعیت تحلیل دریافت نشد: ${error.message || error}`, 'error');
@@ -106,6 +108,17 @@ async function showPage(name) {
   }
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === name));
   document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === 'page-' + name));
+  const pageTitles = {
+    upload: 'ورودی داده‌ها', periods: 'آماده‌سازی و اجرای تحلیل',
+    dashboard: 'داشبورد', general: 'تحلیل کلی', comparison: 'مقایسه دوره‌ها',
+    ranking: 'عملکرد کارشناسان', cases: 'جزئیات موارد / Taskها',
+    suspicious: 'موارد نیازمند بررسی', 'data-quality': 'سلامت داده',
+    'mgmt-report': 'گزارش مدیریتی', export: 'خروجی و گزارش‌ها',
+    'expert-groups': 'گروه‌بندی کارشناسان', criteria: 'معیارها و وزن‌ها',
+    'ai-settings': 'تنظیمات AI',
+  };
+  const topbarTitle = document.getElementById('topbar-page-title');
+  if (topbarTitle) topbarTitle.textContent = pageTitles[name] || name;
   const loaders = {
     dashboard: loadDashboard, general: loadGeneral, comparison: loadComparison,
     ranking: loadRanking, cases: () => loadCasesTable(0), suspicious: loadSuspicious,
@@ -1170,8 +1183,38 @@ function drawChart(canvasId, type, data) {
     type, data,
     options: {
       responsive: true,
-      plugins: { legend: { labels: { font: { family: 'Vazirmatn' } } } },
-      scales: { y: { beginAtZero: true, max: 100, ticks: { font: { family: 'Vazirmatn' } } }, x: { ticks: { font: { family: 'Vazirmatn' } } } },
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        legend: {
+          rtl: true,
+          textDirection: 'rtl',
+          labels: { usePointStyle: true, boxWidth: 8, padding: 16, font: { family: 'Vazirmatn', size: 11 } },
+        },
+        tooltip: {
+          rtl: true,
+          textDirection: 'rtl',
+          backgroundColor: '#0f172a',
+          titleFont: { family: 'Vazirmatn', size: 12 },
+          bodyFont: { family: 'Vazirmatn', size: 11 },
+          padding: 10,
+          cornerRadius: 8,
+          displayColors: true,
+          callbacks: {
+            label: context => ` ${context.dataset.label || ''}: ${fmt(context.parsed.y)}`,
+          },
+        },
+      },
+      scales: {
+        y: {
+          beginAtZero: true, max: 100,
+          grid: { color: 'rgba(148,163,184,.18)', drawBorder: false },
+          ticks: { color: '#64748b', font: { family: 'Vazirmatn', size: 10 }, callback: value => fmt(value) },
+        },
+        x: {
+          grid: { display: false },
+          ticks: { color: '#64748b', font: { family: 'Vazirmatn', size: 10 } },
+        },
+      },
     },
   });
 }
@@ -1492,7 +1535,13 @@ async function loadCasesTable(page) {
   const aiStatusFilter = document.getElementById('cases-ai-status-filter').value || null;
   const res = await api().get_cases_table(period, page, state.casesPageSize, expertFilter,
     statusFilter.length ? statusFilter : null, numberQuery, serviceFilter, aiStatusFilter);
-  if (!res.ok) return;
+  if (!res.ok) {
+    document.getElementById('cases-content').style.display = 'none';
+    document.getElementById('cases-empty').style.display = 'block';
+    document.getElementById('cases-empty').textContent =
+      res.error || 'داده‌ای برای نمایش وجود ندارد.';
+    return;
+  }
   document.getElementById('cases-empty').style.display = 'none';
   document.getElementById('cases-content').style.display = 'block';
 

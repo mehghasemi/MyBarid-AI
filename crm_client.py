@@ -14,7 +14,7 @@ from xml.etree import ElementTree
 from urllib.parse import quote
 
 from data.cleaner import build_cases
-from data.validator import NoteRecord, ValidationSummary, parse_datetime
+from data.validator import NoteRecord, TaskRecord, ValidationSummary, parse_datetime
 from pipeline import Dataset
 
 
@@ -39,7 +39,12 @@ def dataset_to_payload(dataset: Dataset) -> dict:
              "note_date": _iso(n.note_date)}
             for n in dataset.notes
         ],
-        "tasks": [],
+        "tasks": [
+            {**t.__dict__, "created_on": _iso(t.created_on),
+             "actual_start": _iso(t.actual_start), "due_date": _iso(t.due_date),
+             "next_follow_up": _iso(t.next_follow_up)}
+            for t in dataset.tasks
+        ],
     }
 
 
@@ -51,7 +56,16 @@ def dataset_from_payload(payload: dict) -> Dataset:
         )
         for row in payload.get("notes", [])
     ]
-    cases, unmatched = build_cases(notes, [])
+    tasks = [
+        TaskRecord(
+            **{**row, "created_on": parse_datetime(row.get("created_on")),
+               "actual_start": parse_datetime(row.get("actual_start")),
+               "due_date": parse_datetime(row.get("due_date")),
+               "next_follow_up": parse_datetime(row.get("next_follow_up"))}
+        )
+        for row in payload.get("tasks", [])
+    ]
+    cases, unmatched = build_cases(notes, tasks)
     summary = ValidationSummary(
         file_name="CRM Snapshot", sheet_name="CRM", total_rows=len(notes),
         usable_rows=len(notes), rows_without_date=sum(1 for n in notes if not n.note_date),
@@ -61,7 +75,7 @@ def dataset_from_payload(payload: dict) -> Dataset:
         warnings=["این داده از Snapshot محلی CRM بازیابی شده است."],
     )
     return Dataset(
-        notes=notes, tasks=[], cases=cases, unmatched_tasks=unmatched,
+        notes=notes, tasks=tasks, cases=cases, unmatched_tasks=unmatched,
         notes_summary=summary, tasks_summary=summary,
     )
 
@@ -116,6 +130,41 @@ def _looks_like_guid(value: str) -> bool:
     return len(parts) == 5 and all(parts) and all(
         all(ch in "0123456789abcdefABCDEF" for ch in part) for part in parts
     )
+
+
+def _guid(value) -> str | None:
+    text = str(value or "").strip().strip("{}")
+    return text if _looks_like_guid(text) else None
+
+
+def _row_guid(row: dict, *names: str) -> str | None:
+    direct = _guid(_value(row, *names))
+    if direct:
+        return direct
+    # FetchXML aliases vary between Dynamics deployments. When an explicit
+    # field name is absent, inspect lookup-like keys for a GUID value.
+    for key, value in row.items():
+        key_text = str(key).casefold()
+        if any(token in key_text for token in (
+            "objectid", "incidentid", "regardingobjectid",
+        )):
+            found = _guid(value)
+            if found:
+                return found
+    return None
+
+
+def _paged_values(url: str, username: str = "", password: str = "") -> list[dict]:
+    payload = _powershell_get_json(url, username, password)
+    rows = list(payload.get("value") or [])
+    next_link = payload.get("@odata.nextLink") or payload.get("odata.nextLink")
+    page_count = 1
+    while next_link and page_count < 1000:
+        page_payload = _powershell_get_json(next_link, username, password)
+        rows.extend(page_payload.get("value") or [])
+        next_link = page_payload.get("@odata.nextLink") or page_payload.get("odata.nextLink")
+        page_count += 1
+    return rows
 
 
 def _add_modified_since_filter(fetchxml: str, since: datetime) -> str:
@@ -283,6 +332,57 @@ class DynamicsCRMClient:
             rows.extend(page_payload.get("value") or [])
             next_link = page_payload.get("@odata.nextLink") or page_payload.get("odata.nextLink")
             page_count += 1
+
+        # The selected View may contain only a subset of Notes for a Case.
+        # Expand every Case found by the View to all related Notes and Tasks;
+        # this expansion is intentionally independent of the selected date
+        # range and is deduplicated by the CRM record id.
+        case_context: dict[str, dict] = {}
+        case_ids: set[str] = set()
+        for row in rows:
+            case_id = _row_guid(
+                row, "_objectid_value", "ac.incidentid", "incidentid", "objectid"
+            )
+            if case_id:
+                case_ids.add(case_id)
+                case_context.setdefault(case_id, row)
+
+        expanded_notes = list(rows)
+        note_ids = {
+            str(_value(row, "annotationid") or "").casefold()
+            for row in expanded_notes
+            if _value(row, "annotationid")
+        }
+        expanded_tasks: list[dict] = []
+        for case_id in sorted(case_ids):
+            note_url = (
+                f"{self.api_root}/annotations?"
+                f"$filter=_objectid_value%20eq%20{case_id}"
+                f"&$select=annotationid,notetext,createdon,modifiedon,modifiedby,"
+                f"_objectid_value"
+            )
+            for note_row in _paged_values(note_url, self.username, self.password):
+                note_id = str(_value(note_row, "annotationid") or "").casefold()
+                if note_id and note_id not in note_ids:
+                    expanded_notes.append({
+                        **case_context[case_id], **note_row,
+                        "_objectid_value": case_id,
+                    })
+                    note_ids.add(note_id)
+
+            task_url = (
+                f"{self.api_root}/tasks?"
+                f"$filter=_regardingobjectid_value%20eq%20{case_id}"
+                f"&$select=activityid,subject,description,createdon,actualstart,"
+                f"scheduledend,statuscode,ownerid,_regardingobjectid_value"
+            )
+            for task_row in _paged_values(task_url, self.username, self.password):
+                expanded_tasks.append({
+                    **case_context[case_id], **task_row,
+                    "_regardingobjectid_value": case_id,
+                })
+
+        rows = expanded_notes
         notes: list[NoteRecord] = []
         for row in rows:
             case_number = _value(row, "ac.ticketnumber", "ticketnumber")
@@ -305,21 +405,46 @@ class DynamicsCRMClient:
                 incident_type=_display(row, "ac.brd_incidenttype"),
                 case_description=_value(row, "ac.description"),
                 scenario=_value(row, "ac.brd_scenario"),
+                case_id=_row_guid(
+                    row, "_objectid_value", "ac.incidentid", "incidentid", "objectid"
+                ),
             ))
-        cases, unmatched = build_cases(notes, [])
+        tasks = [
+            TaskRecord(
+                task_id=_value(row, "activityid", "taskid"),
+                subject=_value(row, "subject"),
+                description=_value(row, "description"),
+                case_number=_value(row, "ac.ticketnumber", "ticketnumber"),
+                regarding=_value(row, "ac.title", "title", "_regardingobjectid_value"),
+                created_by=_display(row, "ownerid", "createdby"),
+                created_on=parse_datetime(_value(row, "createdon")),
+                actual_start=parse_datetime(_value(row, "actualstart")),
+                due_date=parse_datetime(_value(row, "scheduledend")),
+                status_reason=_display(row, "statuscode"),
+                follow_up_needed=None,
+                next_follow_up=None,
+                work_type=None,
+                assign_to=_display(row, "ownerid"),
+                case_id=_row_guid(
+                    row, "_regardingobjectid_value", "regardingobjectid"
+                ),
+            )
+            for row in expanded_tasks
+        ]
+        cases, unmatched = build_cases(notes, tasks)
         now = datetime.now().isoformat()
         summary = ValidationSummary(
             file_name=f"CRM View: {self.view_name}",
             sheet_name=self.view_name,
-            total_rows=len(rows), usable_rows=len(notes),
+            total_rows=len(rows) + len(tasks), usable_rows=len(notes) + len(tasks),
             rows_without_date=sum(1 for n in notes if not n.note_date),
             unique_cases=len(cases), incomplete_rows=sum(1 for n in notes if not n.description),
             usable_columns=0, total_columns=0, mapping={}, missing_required_labels=[],
             ambiguous={}, unmatched_headers=[],
-            warnings=["داده‌های Task در View TESTNOTE وجود ندارد و در این مرحله خالی است."],
+            warnings=["تمام Noteها و Taskهای مرتبط با Caseهای پیدا‌شده، مستقل از تاریخ واکشی شدند."],
         )
         dataset = Dataset(
-            notes=notes, tasks=[], cases=cases, unmatched_tasks=unmatched,
+            notes=notes, tasks=tasks, cases=cases, unmatched_tasks=unmatched,
             notes_summary=summary, tasks_summary=summary,
         )
         modified_dates = [n.note_date for n in notes if n.note_date]

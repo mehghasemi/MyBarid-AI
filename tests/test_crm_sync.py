@@ -75,6 +75,46 @@ def test_crm_view_fetch_follows_next_link_pages():
     assert metadata["row_count"] == 3
 
 
+def test_crm_view_expands_all_case_notes_and_tasks():
+    case_id = "11111111-1111-1111-1111-111111111111"
+    responses = [
+        {"value": [{
+            "annotationid": "n-view",
+            "notetext": "یادداشت View",
+            "ac.ticketnumber": "CAS-1",
+            "ac.title": "عنوان Case",
+            "_objectid_value": case_id,
+            "modifiedon": "2026-08-29T10:00:00Z",
+        }]},
+        {"value": [{
+            "annotationid": "n-old",
+            "notetext": "یادداشت قدیمی",
+            "createdon": "2024-01-01T10:00:00Z",
+            "_objectid_value": case_id,
+        }]},
+        {"value": [{
+            "activityid": "t-old",
+            "subject": "اقدام قدیمی",
+            "description": "Task مرتبط با Case",
+            "createdon": "2023-01-01T10:00:00Z",
+            "_regardingobjectid_value": case_id,
+        }]},
+    ]
+    client = DynamicsCRMClient(view_name="TESTNOTE")
+    with patch("crm_client._powershell_get_json", side_effect=responses):
+        with patch.object(
+            client, "_get_user_view",
+            return_value={"fetchxml": "<fetch><entity name='annotation'/></fetch>"},
+        ):
+            dataset, metadata = client.fetch_view_dataset()
+
+    assert len(dataset.notes) == 2
+    assert len(dataset.tasks) == 1
+    assert len(dataset.cases["CAS-1"].notes) == 2
+    assert len(dataset.cases["CAS-1"].tasks) == 1
+    assert metadata["row_count"] == 2
+
+
 def test_local_analysis_record_round_trip_keeps_metadata(tmp_path):
     original_path = db.DB_PATH
     db.DB_PATH = tmp_path / "app.db"

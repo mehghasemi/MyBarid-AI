@@ -78,6 +78,7 @@ class NoteRecord:
     incident_type: str | None
     case_description: str | None
     scenario: str | None
+    case_id: str | None = None
 
     @property
     def case_key(self) -> str | None:
@@ -105,6 +106,7 @@ class TaskRecord:
     next_follow_up: datetime | None
     work_type: str | None
     assign_to: str | None
+    case_id: str | None = None
 
     @property
     def case_key_hint(self) -> str | None:

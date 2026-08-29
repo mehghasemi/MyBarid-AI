@@ -156,6 +156,23 @@
   </div>
 
   <div id="main">
+    <header class="app-topbar" aria-label="نوار ابزار اصلی">
+      <div class="topbar-context">
+        <span class="breadcrumb-root">سامانه نوین</span>
+        <span class="breadcrumb-separator">/</span>
+        <strong id="topbar-page-title">داشبورد</strong>
+      </div>
+      <div class="topbar-actions">
+        <div class="period-switcher" role="group" aria-label="حالت بازه">
+          <button type="button" class="period-pill active" onclick="showPage('dashboard')">نمای کلی</button>
+          <button type="button" class="period-pill" onclick="showPage('comparison')">مقایسه دوره‌ها</button>
+        </div>
+        <span class="connection-status offline" title="داده‌ها از Snapshot محلی خوانده می‌شوند">
+          <span class="status-dot"></span>
+          آفلاین / Snapshot محلی
+        </span>
+      </div>
+    </header>
     <!-- ============================================================ Upload -->
     <section class="page active" id="page-upload">
       <h1 class="page-title">بارگذاری فایل‌های Notes و Tasks</h1>
