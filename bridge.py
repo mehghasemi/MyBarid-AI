@@ -78,6 +78,15 @@ class Api:
             "stage": "", "result": None,
         }
         self._lock = threading.Lock()
+        # Restore the latest local CRM snapshot only. This is deliberately
+        # offline: startup must never contact CRM or read Excel automatically.
+        try:
+            snapshot = db.get_latest_crm_snapshot()
+            if snapshot and snapshot.get("payload"):
+                self.dataset = dataset_from_payload(snapshot["payload"])
+                db.set_setting("data_source", "crm")
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()
 
     def __dir__(self):
         """Expose only API methods to pywebview's bridge introspection.
@@ -171,6 +180,18 @@ class Api:
             "view_name": stored.get("view_name", DEFAULT_VIEW_NAME),
             "data_source": db.get_setting("data_source", "crm"),
             "last_snapshot": db.get_latest_crm_snapshot(),
+        }
+
+    def get_dataset_info(self) -> dict:
+        """Return the locally active dataset without reading any external source."""
+        if not self.dataset:
+            return {"ok": True, "loaded": False, "total_cases": 0, "total_notes": 0, "total_tasks": 0}
+        return {
+            "ok": True, "loaded": True,
+            "source": db.get_setting("data_source", "crm"),
+            "total_cases": len(self.dataset.cases),
+            "total_notes": len(self.dataset.notes),
+            "total_tasks": len(self.dataset.tasks),
         }
 
     def set_data_source(self, source: str) -> dict:

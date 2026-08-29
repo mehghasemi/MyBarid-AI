@@ -548,6 +548,15 @@ async function loadCrmSettings() {
     document.getElementById('crm-status').textContent =
       `آخرین دریافت ذخیره‌شده: ${m.fetched_at || s.last_snapshot.fetched_at} — View: ${s.last_snapshot.view_name}. برای دریافت جدید دکمه واکشی را بزنید.`;
   }
+  // Restore the local snapshot into the active UI state. This does not call
+  // CRM; it only reads the local SQLite-backed snapshot through the bridge.
+  const local = await api().get_dataset_info();
+  if (local?.loaded) {
+    state.datasetLoaded = true;
+    document.getElementById('dataset-status').textContent =
+      `${local.total_cases.toLocaleString('fa-IR')} مورد | Snapshot محلی CRM`;
+    await initializeCaseSelection();
+  }
 }
 
 async function loadCrmViews() {
