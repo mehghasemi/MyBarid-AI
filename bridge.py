@@ -104,9 +104,17 @@ class Api:
                 saved = db.get_local_analysis_record()
                 snapshot_id = _dataset_id(snapshot)
                 if saved and saved.get("result") and (
-                    not saved.get("dataset_id") or saved.get("dataset_id") == snapshot_id
+                    not saved.get("dataset_id")
+                    or saved.get("dataset_id") == snapshot_id
+                    or saved.get("dataset_id_version", 1) < 2
                 ):
                     self.result = saved["result"]
+                    if saved.get("dataset_id_version", 1) < 2 and snapshot_id:
+                        db.save_local_analysis(
+                            self.result,
+                            dataset_id=snapshot_id,
+                            view_name=snapshot.get("view_name"),
+                        )
         except Exception:  # noqa: BLE001
             traceback.print_exc()
 

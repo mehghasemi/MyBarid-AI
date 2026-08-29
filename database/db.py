@@ -235,6 +235,7 @@ def save_local_analysis(result, dataset_id: str | None = None,
             "result": result,
             "dataset_id": dataset_id,
             "view_name": view_name,
+            "dataset_id_version": 2,
         }
         conn.execute(
             "INSERT INTO local_analysis_state(id, saved_at, payload) VALUES (1, ?, ?) "
@@ -263,7 +264,7 @@ def get_local_analysis_record():
             return value
         return {
             "result": value, "dataset_id": None, "view_name": None,
-            "saved_at": row["saved_at"],
+            "saved_at": row["saved_at"], "dataset_id_version": 1,
         }
     except (pickle.PickleError, EOFError, TypeError, ValueError, AttributeError):
         return None
