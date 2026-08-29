@@ -557,8 +557,9 @@ function ensureCrmViewSelector() {
   const select = document.createElement('select');
   select.id = input.id;
   select.className = input.className;
-  select.innerHTML = '<option value="TESTNOTE">TESTNOTE (پیش‌فرض)</option>';
-  select.value = input.value || 'TESTNOTE';
+  const defaultView = 'داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر';
+  select.innerHTML = `<option value="${escapeHtml(defaultView)}">${escapeHtml(defaultView)} (پیش‌فرض)</option>`;
+  select.value = input.value || defaultView;
   input.replaceWith(select);
   const status = document.getElementById('crm-status');
   if (status && !document.getElementById('crm-load-views')) {
@@ -625,7 +626,7 @@ async function loadCrmSettings() {
 async function loadCrmViews() {
   const select = ensureCrmViewSelector();
   if (!select) return;
-  const current = select.value || 'TESTNOTE';
+  const current = select.value || 'داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر';
   select.innerHTML = '<option value="">در حال دریافت فهرست Viewها...</option>';
   const res = await api().get_crm_views({
     base_url: document.getElementById('crm-base-url').value.trim(),
@@ -641,7 +642,11 @@ async function loadCrmViews() {
   select.innerHTML = res.views.length
     ? res.views.map(v => `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name)} — ${escapeHtml(v.scope)}</option>`).join('')
     : '<option value="">View مربوط به Note پیدا نشد</option>';
-  if (res.views.some(v => v.name === current)) select.value = current;
+  if (res.views.some(v => v.name === current)) {
+    select.value = current;
+  } else if (res.views.some(v => v.name === 'داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر')) {
+    select.value = 'داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر';
+  }
 }
 
 async function testCrmConnection() {

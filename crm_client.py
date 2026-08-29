@@ -25,7 +25,7 @@ class CRMClientError(RuntimeError):
 DEFAULT_BASE_URL = "https://crm.baridsoft.ir"
 DEFAULT_ORGANIZATION = "Main"
 DEFAULT_API_VERSION = "v9.1"
-DEFAULT_VIEW_NAME = "TESTNOTE"
+DEFAULT_VIEW_NAME = "داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر"
 
 
 def _iso(value):

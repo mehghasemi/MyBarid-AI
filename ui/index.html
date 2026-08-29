@@ -221,9 +221,15 @@
           <div class="field"><label class="field-label">سازمان</label><input id="crm-organization" value="Main"></div>
           <div class="field"><label class="field-label">نام کاربری CRM <span class="muted">(اختیاری)</span></label><input id="crm-username" autocomplete="username" placeholder="DOMAIN\username"></div>
           <div class="field"><label class="field-label">رمز عبور CRM <span class="muted">(ذخیره نمی‌شود)</span></label><input id="crm-password" type="password" autocomplete="current-password"></div>
-          <div class="field"><label class="field-label">نام View</label><input id="crm-view-name" value="TESTNOTE"></div>
+          <div class="field">
+            <label class="field-label">View موردنظر</label>
+            <select id="crm-view-name">
+              <option value="داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر">داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر (پیش‌فرض)</option>
+            </select>
+          </div>
         </div>
         <div id="crm-status" class="muted-box">وضعیت اتصال CRM هنوز بررسی نشده است.</div>
+        <button class="btn" id="crm-load-views" onclick="loadCrmViews()">دریافت فهرست Viewها</button>
         <button class="btn" onclick="testCrmConnection()">آزمون اتصال</button>
         <button class="btn primary" onclick="syncCrmView()">دریافت داده از View</button>
         <label class="inline-check" style="margin-top:10px">

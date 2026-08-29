@@ -203,7 +203,7 @@ class Api:
             "base_url": stored.get("base_url", DEFAULT_BASE_URL),
             "organization": stored.get("organization", DEFAULT_ORGANIZATION),
             "api_version": stored.get("api_version", DEFAULT_API_VERSION),
-            "view_name": stored.get("view_name", DEFAULT_VIEW_NAME),
+            "view_name": stored.get("view_name") or DEFAULT_VIEW_NAME,
             "data_source": db.get_setting("data_source", "crm"),
             "last_snapshot": db.get_latest_crm_snapshot(),
         }
@@ -1145,9 +1145,16 @@ class Api:
             cases = {**self.result["period1"].cases, **self.result["period2"].cases}
             scores = {**self.result["period1"].scores, **self.result["period2"].scores}
             return cases, scores
-        if period == "general" and self.result.get("mode") == "general":
+        if self.result.get("mode") == "general":
             return self.result["general"].cases, self.result["general"].scores
-        pr = self.result[period] if period in ("period1", "period2") else self.result["period2"]
+        if period in ("period1", "period2") and period in self.result:
+            pr = self.result[period]
+        elif "general" in self.result:
+            pr = self.result["general"]
+        elif "period2" in self.result:
+            pr = self.result["period2"]
+        else:
+            pr = self.result["period1"]
         return pr.cases, pr.scores
 
     def get_case_detail(self, case_key: str, period: str = "period2") -> dict:
