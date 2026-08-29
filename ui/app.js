@@ -1641,7 +1641,14 @@ async function runSingleCaseAi(caseKey, force = false) {
   renderCaseAiActions(caseKey, true, true);
   const started = await api().start_case_ai_analysis(caseKey, force);
   if (!started.ok) {
-    renderCaseAiActions(caseKey, false);
+    // "Already analyzed" is an informational guard, not a failed analysis.
+    // Keep the successful state visible so the action area and the message
+    // cannot contradict each other.
+    renderCaseAiActions(caseKey, !!started.already_analyzed);
+    if (started.already_analyzed) {
+      toast('این کیس قبلاً با همین تنظیمات با موفقیت تحلیل شده است.', 'success');
+      return;
+    }
     showCaseAiError(started.error || 'شروع بررسی AI ناموفق بود');
     return;
   }
