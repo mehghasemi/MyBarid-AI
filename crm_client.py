@@ -272,7 +272,17 @@ class DynamicsCRMClient:
         query_fetchxml = _add_modified_since_filter(fetchxml, since) if since else fetchxml
         url = f"{self.api_root}/annotations?fetchXml={quote(query_fetchxml, safe='')}"
         payload = _powershell_get_json(url, self.username, self.password)
-        rows = payload.get("value") or []
+        rows = list(payload.get("value") or [])
+        # Dataverse may paginate FetchXML results. The first response can
+        # contain only a small page even when the selected View has many more
+        # records. Follow the server-provided continuation link.
+        next_link = payload.get("@odata.nextLink") or payload.get("odata.nextLink")
+        page_count = 1
+        while next_link and page_count < 1000:
+            page_payload = _powershell_get_json(next_link, self.username, self.password)
+            rows.extend(page_payload.get("value") or [])
+            next_link = page_payload.get("@odata.nextLink") or page_payload.get("odata.nextLink")
+            page_count += 1
         notes: list[NoteRecord] = []
         for row in rows:
             case_number = _value(row, "ac.ticketnumber", "ticketnumber")

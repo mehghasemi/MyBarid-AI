@@ -545,8 +545,9 @@ async function loadCrmSettings() {
   setFileInputEnabled(s.data_source !== 'crm');
   if (s.last_snapshot) {
     const m = s.last_snapshot.metadata || {};
+    const fetchedAt = m.fetched_at || s.last_snapshot.fetched_at;
     document.getElementById('crm-status').textContent =
-      `آخرین دریافت ذخیره‌شده: ${m.fetched_at || s.last_snapshot.fetched_at} — View: ${s.last_snapshot.view_name}. برای دریافت جدید دکمه واکشی را بزنید.`;
+      `آخرین دریافت ذخیره‌شده: ${toShamsiStr(fetchedAt)} — View: ${s.last_snapshot.view_name}. برای دریافت جدید دکمه واکشی را بزنید.`;
   }
   // Restore the local snapshot into the active UI state. This does not call
   // CRM; it only reads the local SQLite-backed snapshot through the bridge.
@@ -561,6 +562,14 @@ async function loadCrmSettings() {
       state.analysisDone = true;
       document.getElementById('run-result').innerHTML =
         '<div class="ok-box">آخرین نتیجه تحلیل محلی بازیابی شد؛ برای به‌روزرسانی، تحلیل را دوباره اجرا کنید.</div>';
+    }
+    const fetchedAt = s.last_snapshot?.metadata?.fetched_at || s.last_snapshot?.fetched_at;
+    if (s.data_source === 'crm' && fetchedAt && !window._crmStartupUpdateAsked) {
+      window._crmStartupUpdateAsked = true;
+      const shouldUpdate = window.confirm(
+        `داده‌های محلی CRM آماده هستند.\nآخرین به‌روزرسانی: ${toShamsiStr(fetchedAt)}\n\nآیا می‌خواهید فقط تغییرات جدید و اصلاح‌شده از CRM دریافت شود؟`
+      );
+      if (shouldUpdate) await syncCrmView();
     }
   }
 }
