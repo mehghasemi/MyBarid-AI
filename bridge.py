@@ -864,15 +864,11 @@ class Api:
                     if result.get("mode") == "general"
                     else len(set(result["period1"].cases) | set(result["period2"].cases))
                 )
-                if unit == "case" and analyzed_count != len(selected_case_keys or ()):
-                    raise RuntimeError(
-                        f"تعداد موارد تحلیل‌شده با انتخاب شما همخوان نیست: "
-                        f"{analyzed_count} از {len(selected_case_keys or ())} مورد."
-                    )
                 self.result = result
                 self.status.update({
                     "running": False, "done": True, "stage": "پایان یافت",
                     "analyzed_case_count": analyzed_count,
+                    "eligible_case_count": analyzed_count,
                 })
         except AnalysisCancelled:
             with self._lock:
