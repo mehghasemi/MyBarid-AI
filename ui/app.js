@@ -85,14 +85,17 @@ async function showPage(name) {
   if (analysisPages.has(name)) {
     try {
       const info = await api().get_analysis_info();
-      if (!info?.loaded) {
+      const datasetInfo = name === 'cases' ? await api().get_dataset_info() : null;
+      if (!info?.loaded && !(name === 'cases' && datasetInfo?.loaded)) {
         toast(
-          'برای این داده هنوز نتیجه تحلیل ذخیره نشده است.',
+          name === 'cases'
+            ? 'هنوز داده‌ای برای نمایش وجود ندارد؛ ابتدا داده را از CRM یا فایل دریافت کنید.'
+            : 'برای این داده هنوز نتیجه تحلیل ذخیره نشده است.',
           'error'
         );
         return;
       }
-      state.analysisDone = true;
+      state.analysisDone = !!info?.loaded;
       if (info.stale) {
         toast('نتیجه موجود مربوط به Snapshot قبلی است؛ برای داده جدید تحلیل را اجرا کنید.', 'warn');
       }

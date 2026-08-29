@@ -1151,9 +1151,14 @@ class Api:
         return pr.cases, pr.scores
 
     def get_case_detail(self, case_key: str, period: str = "period2") -> dict:
-        if not self.result:
+        if self.result:
+            cases, scores = self._resolve_period(period)
+        elif self.dataset:
+            # Case details must remain available from the local snapshot even
+            # before an analysis has been executed.
+            cases, scores = self.dataset.cases, {}
+        else:
             return {"ok": False}
-        cases, scores = self._resolve_period(period)
         case = cases.get(case_key) or (self.dataset.cases.get(case_key) if self.dataset else None)
         if not case:
             return {"ok": False, "error": "مورد پیدا نشد."}
@@ -1269,9 +1274,19 @@ class Api:
                          case_number_filter: str | None = None,
                          service_filter: str | None = None,
                          ai_status_filter: str | None = None) -> dict:
-        if not self.result:
-            return {"ok": False}
-        cases, scores = self._resolve_period(period)
+        if self.result:
+            cases, scores = self._resolve_period(period)
+            unit = self.result.get("unit", "case")
+        elif self.dataset:
+            # The details grid is a data browser, not an analysis-only view.
+            # Use the locally persisted CRM/file dataset when no result exists.
+            cases, scores = self.dataset.cases, {}
+            unit = "case"
+        else:
+            return {
+                "ok": False,
+                "error": "هنوز داده‌ای در بانک محلی برنامه وجود ندارد؛ ابتدا داده را از CRM یا فایل دریافت کنید.",
+            }
         from analysis.experts import primary_expert
         rows = []
         snapshot = db.get_latest_crm_snapshot()
@@ -1328,7 +1343,7 @@ class Api:
             "ok": True, "rows": rows[start:start + page_size], "total": total,
             "experts": sorted(experts_seen), "status_reasons": sorted(status_reasons_seen),
             "services": sorted(services_seen),
-            "unit": self.result.get("unit", "case"),
+            "unit": unit,
         }
 
     def get_suspicious(self, expert_filter: str | None = None,
