@@ -569,7 +569,16 @@ async function loadCrmSettings() {
       const shouldUpdate = window.confirm(
         `داده‌های محلی CRM آماده هستند.\nآخرین به‌روزرسانی: ${toShamsiStr(fetchedAt)}\n\nآیا می‌خواهید فقط تغییرات جدید و اصلاح‌شده از CRM دریافت شود؟`
       );
-      if (shouldUpdate) await syncCrmView();
+      if (shouldUpdate) {
+        await syncCrmView();
+      } else {
+        const statusBox = document.getElementById('crm-status');
+        if (statusBox) {
+          statusBox.textContent =
+            `ادامه با داده محلی؛ آخرین دریافت: ${toShamsiStr(fetchedAt)}. برای دریافت تغییرات جدید، دکمه «دریافت داده از CRM» را بزنید.`;
+        }
+        toast('بروزرسانی CRM لغو شد؛ داده‌های محلی حفظ شدند.', 'success');
+      }
     }
   }
 }
@@ -1874,7 +1883,10 @@ function initApp() {
   loadCriteria();
   loadAiSettings();
   loadExpertGroupsSettings();
-  loadCrmSettings();
+  loadCrmSettings().catch(error => {
+    const statusBox = document.getElementById('crm-status');
+    if (statusBox) statusBox.textContent = `خطا در بازیابی داده محلی CRM: ${error.message || error}`;
+  });
   // هیچ منبع داده‌ای هنگام شروع خودکار خوانده نمی‌شود؛ کاربر باید منبع را صریحاً انتخاب کند.
   buildJalaliPicker('p1-start-picker');
   buildJalaliPicker('p1-end-picker');
