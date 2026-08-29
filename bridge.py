@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import copy
+import hashlib
 import threading
 import traceback
 from dataclasses import asdict
@@ -49,6 +50,21 @@ def _iso(dt):
     return dt.isoformat() if isinstance(dt, datetime) else None
 
 
+def _dataset_id(snapshot: dict | None) -> str | None:
+    """Return a stable identity for the locally persisted CRM Snapshot."""
+    if not snapshot or not snapshot.get("payload"):
+        return None
+    payload = copy.deepcopy(snapshot["payload"])
+    for key in ("notes", "tasks"):
+        if isinstance(payload.get(key), list):
+            payload[key] = sorted(
+                payload[key],
+                key=lambda row: str(row.get("note_id") or row.get("task_id") or ""),
+            )
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 def _parse_period_bound(value: str, end: bool) -> datetime:
     """ورودی می‌تواند فقط تاریخ («YYYY-MM-DD») یا تاریخ+ساعت باشد. اگر فقط
     تاریخ داده شود (رفتار جدید UI که ساعت را حذف کرده)، برای شروع بازه
@@ -85,9 +101,12 @@ class Api:
             if snapshot and snapshot.get("payload"):
                 self.dataset = dataset_from_payload(snapshot["payload"])
                 db.set_setting("data_source", "crm")
-                saved_result = db.get_local_analysis()
-                if saved_result:
-                    self.result = saved_result
+                saved = db.get_local_analysis_record()
+                snapshot_id = _dataset_id(snapshot)
+                if saved and saved.get("result") and (
+                    not saved.get("dataset_id") or saved.get("dataset_id") == snapshot_id
+                ):
+                    self.result = saved["result"]
         except Exception:  # noqa: BLE001
             traceback.print_exc()
 
@@ -198,7 +217,19 @@ class Api:
         }
 
     def get_analysis_info(self) -> dict:
-        return {"ok": True, "loaded": bool(self.result)}
+        record = db.get_local_analysis_record()
+        snapshot = db.get_latest_crm_snapshot()
+        current_id = _dataset_id(snapshot)
+        saved_id = (record or {}).get("dataset_id")
+        stale = bool(
+            self.result and saved_id and current_id and saved_id != current_id
+        )
+        return {
+            "ok": True,
+            "loaded": bool(self.result),
+            "stale": stale,
+            "saved_at": (record or {}).get("saved_at"),
+        }
 
     def set_data_source(self, source: str) -> dict:
         value = "crm" if source == "crm" else "file"
@@ -340,11 +371,22 @@ class Api:
         db.save_crm_snapshot("dynamics365", settings["view_name"], metadata["fetched_at"],
                              metadata, current_payload)
         db.set_setting("data_source", "crm")
+        current_id = _dataset_id({
+            "view_name": settings["view_name"],
+            "payload": current_payload,
+        })
+        previous_analysis = db.get_local_analysis_record()
         with self._lock:
             self._analysis_generation += 1
             self.dataset = dataset
-            self.result = None
-        db.clear_local_analysis()
+            # Keep the previous result available when the View content did
+            # not change. If content changed, the result is intentionally
+            # hidden until the user runs a new analysis.
+            self.result = (
+                previous_analysis.get("result")
+                if previous_analysis and previous_analysis.get("dataset_id") == current_id
+                else None
+            )
         return {
             "ok": True, "source": "CRM", "view_name": settings["view_name"],
             "fetched_at": metadata["fetched_at"], "total_cases": len(dataset.cases),
@@ -438,7 +480,6 @@ class Api:
             self._analysis_generation += 1
             self.result = None
             self.status = {"running": False, "done": False, "cancelled": False, "stage": "", "current": 0, "total": 0, "error": None}
-        db.clear_local_analysis()
         db.set_setting("data_source", "file")
         ns, ts = self.dataset.notes_summary, self.dataset.tasks_summary
         dates = [n.note_date for n in self.dataset.notes if n.note_date] + \
@@ -895,7 +936,12 @@ class Api:
                     else len(set(result["period1"].cases) | set(result["period2"].cases))
                 )
                 self.result = result
-                db.save_local_analysis(result)
+                snapshot = db.get_latest_crm_snapshot()
+                db.save_local_analysis(
+                    result,
+                    dataset_id=_dataset_id(snapshot) if snapshot else None,
+                    view_name=(snapshot or {}).get("view_name") if snapshot else None,
+                )
                 self.status.update({
                     "running": False, "done": True, "stage": "پایان یافت",
                     "analyzed_case_count": analyzed_count,

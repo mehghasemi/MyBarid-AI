@@ -226,31 +226,54 @@ def get_latest_crm_snapshot() -> dict | None:
         conn.close()
 
 
-def save_local_analysis(result) -> None:
+def save_local_analysis(result, dataset_id: str | None = None,
+                        view_name: str | None = None) -> None:
     import datetime
     conn = get_connection()
     try:
+        payload = {
+            "result": result,
+            "dataset_id": dataset_id,
+            "view_name": view_name,
+        }
         conn.execute(
             "INSERT INTO local_analysis_state(id, saved_at, payload) VALUES (1, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET saved_at=excluded.saved_at, payload=excluded.payload",
-            (datetime.datetime.now().isoformat(), sqlite3.Binary(pickle.dumps(result, protocol=pickle.HIGHEST_PROTOCOL))),
+            (datetime.datetime.now().isoformat(), sqlite3.Binary(
+                pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL)
+            )),
         )
         conn.commit()
     finally:
         conn.close()
 
 
-def get_local_analysis():
+def get_local_analysis_record():
     conn = get_connection()
     try:
-        row = conn.execute("SELECT payload FROM local_analysis_state WHERE id = 1").fetchone()
+        row = conn.execute(
+            "SELECT saved_at, payload FROM local_analysis_state WHERE id = 1"
+        ).fetchone()
         if not row:
             return None
-        return pickle.loads(row["payload"])
+        value = pickle.loads(row["payload"])
+        # Backward compatibility with the pre-metadata format.
+        if isinstance(value, dict) and "result" in value:
+            value["saved_at"] = row["saved_at"]
+            return value
+        return {
+            "result": value, "dataset_id": None, "view_name": None,
+            "saved_at": row["saved_at"],
+        }
     except (pickle.PickleError, EOFError, TypeError, ValueError, AttributeError):
         return None
     finally:
         conn.close()
+
+
+def get_local_analysis():
+    record = get_local_analysis_record()
+    return record.get("result") if record else None
 
 
 def clear_local_analysis() -> None:

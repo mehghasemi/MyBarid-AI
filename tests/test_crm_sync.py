@@ -6,6 +6,8 @@ from crm_client import (
     _add_modified_since_filter,
     dataset_from_payload,
 )
+from database import db
+from bridge import _dataset_id
 
 
 def test_modified_since_filter_preserves_view_filters():
@@ -71,3 +73,25 @@ def test_crm_view_fetch_follows_next_link_pages():
 
     assert len(dataset.notes) == 3
     assert metadata["row_count"] == 3
+
+
+def test_local_analysis_record_round_trip_keeps_metadata(tmp_path):
+    original_path = db.DB_PATH
+    db.DB_PATH = tmp_path / "app.db"
+    try:
+        db.init_db()
+        value = {"mode": "general", "cases": []}
+        db.save_local_analysis(value, dataset_id="snapshot-1", view_name="TESTNOTE")
+        record = db.get_local_analysis_record()
+        assert record["result"] == value
+        assert record["dataset_id"] == "snapshot-1"
+        assert record["view_name"] == "TESTNOTE"
+        assert record["saved_at"]
+    finally:
+        db.DB_PATH = original_path
+
+
+def test_dataset_id_is_not_affected_by_view_row_order():
+    first = {"payload": {"notes": [{"note_id": "2"}, {"note_id": "1"}], "tasks": []}}
+    second = {"payload": {"notes": [{"note_id": "1"}, {"note_id": "2"}], "tasks": []}}
+    assert _dataset_id(first) == _dataset_id(second)

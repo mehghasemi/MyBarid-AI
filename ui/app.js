@@ -561,7 +561,9 @@ async function loadCrmSettings() {
     if (analysis?.loaded) {
       state.analysisDone = true;
       document.getElementById('run-result').innerHTML =
-        '<div class="ok-box">آخرین نتیجه تحلیل محلی بازیابی شد؛ برای به‌روزرسانی، تحلیل را دوباره اجرا کنید.</div>';
+        analysis.stale
+          ? '<div class="warn-box">نتیجه قبلی مربوط به داده قدیمی است و برای مشاهده نتیجه جدید باید تحلیل را دوباره اجرا کنید.</div>'
+          : '<div class="ok-box">آخرین نتیجه تحلیل محلی بازیابی شد؛ برای به‌روزرسانی، تحلیل را دوباره اجرا کنید.</div>';
     }
     const fetchedAt = s.last_snapshot?.metadata?.fetched_at || s.last_snapshot?.fetched_at;
     if (s.data_source === 'crm' && fetchedAt && !window._crmStartupUpdateAsked) {
@@ -635,12 +637,19 @@ async function syncCrmView() {
       setFileInputEnabled(false);
       state.datasetLoaded = true;
       state.dateBounds = res.date_bounds;
+      state.analysisDone = false;
       document.getElementById('dataset-status').textContent =
         `${res.total_cases.toLocaleString('fa-IR')} مورد | داده CRM بارگذاری شد`;
       box.textContent = `دریافت ${res.sync_mode === 'incremental' ? 'تغییرات' : 'کامل'} موفق: ${res.total_notes} Note و ${res.total_cases} مورد. ` +
         `رکورد جدید/تغییریافته: ${res.new_or_changed_notes || 0}، بدون تغییر: ${res.unchanged_notes || 0}، حذف‌شده: ${res.deleted_notes || 0}. ` +
         res.warning;
       await initializeCaseSelection();
+      const analysis = await api().get_analysis_info();
+      state.analysisDone = !!analysis?.loaded && !analysis?.stale;
+      if (analysis?.loaded && analysis?.stale) {
+        document.getElementById('run-result').innerHTML =
+          '<div class="warn-box">داده CRM تغییر کرده است؛ نتیجه قبلی برای این Snapshot معتبر نیست. برای تحلیل داده جدید، تحلیل را اجرا کنید.</div>';
+      }
       const password = document.getElementById('crm-password');
       if (password) password.value = '';
       toast('داده CRM با موفقیت دریافت شد', 'success');
