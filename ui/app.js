@@ -1796,6 +1796,10 @@ function renderCaseAiSuggestions(items) {
     const text = String(value || '').trim();
     if (!text) return text;
     const known = {
+      'Record resolution notes': 'ثبت یادداشت نتیجه و راهکار',
+      'No notes or summary of solution captured': 'هیچ یادداشت یا خلاصه‌ای از راه‌حل ثبت نشده است.',
+      'Add a note summarizing the resolved issue and actions taken': 'یادداشتی شامل خلاصه مشکل حل‌شده و اقدامات انجام‌شده ثبت شود.',
+      'Case events list is empty': 'فهرست رویدادهای این مورد خالی است.',
       'Require detailed implementation steps': 'الزام ارائه مراحل اجرایی دقیق',
       'Activate criterion for case or service type': 'فعال‌سازی معیار برای نوع مورد یا سرویس',
       'Solution lacks specific steps for the conversion process and contingency planning':
