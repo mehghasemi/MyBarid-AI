@@ -1659,7 +1659,7 @@ async function openCaseDetail(caseKey, period) {
       ['Objective', d.breakdown.objective_score], ['AI', d.breakdown.ai_score], ['Final', d.breakdown.final_score],
       ['Coverage', `${Math.round((d.breakdown.coverage || 0) * 100)}%`],
       ['Confidence', d.breakdown.confidence || '—'],
-      ['AI استفاده شده؟', d.breakdown.ai_used ? 'بله' : 'خیر'],
+      ['نتیجه AI موجود؟', d.ai_analyzed ? 'بله' : 'خیر'],
       ['Outcome', d.breakdown.outcome_status || 'Unknown'],
       ['Lifecycle', d.breakdown.lifecycle_status || '—'],
     ].map(([l, v]) => `<div class="card kpi"><div class="label">${l}</div><div class="value small">${typeof v === 'number' ? fmt(v) : v}</div></div>`).join('');
@@ -1823,7 +1823,7 @@ function renderCaseBreakdown(breakdown) {
     ['Objective', breakdown.objective_score], ['AI', breakdown.ai_score], ['Final', breakdown.final_score],
     ['Coverage', `${Math.round((breakdown.coverage || 0) * 100)}%`],
     ['Confidence', breakdown.confidence || '—'],
-    ['AI استفاده شده؟', breakdown.ai_used ? 'بله' : 'خیر'],
+    ['نتیجه AI موجود؟', breakdown.ai_used ? 'بله' : 'خیر'],
     ['Outcome', breakdown.outcome_status || 'Unknown'],
     ['Lifecycle', breakdown.lifecycle_status || '—'],
   ].map(([l, v]) => `<div class="card kpi"><div class="label">${l}</div><div class="value small">${typeof v === 'number' ? fmt(v) : v}</div></div>`).join('');
