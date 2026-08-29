@@ -85,16 +85,17 @@ async function showPage(name) {
   if (analysisPages.has(name)) {
     try {
       const info = await api().get_analysis_info();
-      if (!info?.loaded || info?.stale) {
+      if (!info?.loaded) {
         toast(
-          info?.stale
-            ? 'نتیجه تحلیل مربوط به داده قدیمی است؛ برای مشاهده داده جدید، تحلیل را اجرا کنید.'
-            : 'برای این داده هنوز نتیجه تحلیل ذخیره نشده است.',
+          'برای این داده هنوز نتیجه تحلیل ذخیره نشده است.',
           'error'
         );
         return;
       }
       state.analysisDone = true;
+      if (info.stale) {
+        toast('نتیجه موجود مربوط به Snapshot قبلی است؛ برای داده جدید تحلیل را اجرا کنید.', 'warn');
+      }
     } catch (error) {
       toast(`وضعیت تحلیل دریافت نشد: ${error.message || error}`, 'error');
       return;
