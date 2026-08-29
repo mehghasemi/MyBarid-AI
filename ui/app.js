@@ -80,14 +80,34 @@ document.addEventListener('click', event => {
   if (!event.target.closest('.module-switcher')) closeModulePicker();
 });
 
-function showPage(name) {
+async function showPage(name) {
   const analysisPages = new Set(['dashboard', 'general', 'comparison', 'ranking', 'cases', 'suspicious', 'data-quality', 'mgmt-report', 'export']);
-  if (analysisPages.has(name) && !state.analysisDone) {
-    toast('ابتدا بازه را انتخاب و تحلیل را اجرا کنید.', 'error');
-    return;
+  if (analysisPages.has(name)) {
+    try {
+      const info = await api().get_analysis_info();
+      if (!info?.loaded || info?.stale) {
+        toast(
+          info?.stale
+            ? 'نتیجه تحلیل مربوط به داده قدیمی است؛ برای مشاهده داده جدید، تحلیل را اجرا کنید.'
+            : 'برای این داده هنوز نتیجه تحلیل ذخیره نشده است.',
+          'error'
+        );
+        return;
+      }
+      state.analysisDone = true;
+    } catch (error) {
+      toast(`وضعیت تحلیل دریافت نشد: ${error.message || error}`, 'error');
+      return;
+    }
   }
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === name));
   document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === 'page-' + name));
+  const loaders = {
+    dashboard: loadDashboard, general: loadGeneral, comparison: loadComparison,
+    ranking: loadRanking, cases: () => loadCasesTable(0), suspicious: loadSuspicious,
+    'data-quality': loadDataQuality, 'mgmt-report': loadMgmtReport,
+  };
+  if (loaders[name]) await loaders[name]();
 }
 
 function applyNavigationLabels() {
@@ -559,7 +579,7 @@ async function loadCrmSettings() {
     await initializeCaseSelection();
     const analysis = await api().get_analysis_info();
     if (analysis?.loaded) {
-      state.analysisDone = true;
+      state.analysisDone = !analysis.stale;
       document.getElementById('run-result').innerHTML =
         analysis.stale
           ? '<div class="warn-box">نتیجه قبلی مربوط به داده قدیمی است و برای مشاهده نتیجه جدید باید تحلیل را دوباره اجرا کنید.</div>'
@@ -1484,8 +1504,8 @@ async function loadCasesTable(page) {
 
   const isTask = res.unit === 'task';
   document.getElementById('cases-table-head').innerHTML = isTask
-    ? '<tr><th>شماره Task</th><th>عنوان</th><th>نوع مورد</th><th>کارشناس</th><th colspan="2">—</th><th>Objective</th><th>AI</th><th>Final</th></tr>'
-    : '<tr><th>شماره مورد</th><th>عنوان</th><th>نوع مورد</th><th>کارشناس</th><th>Note</th><th>Task</th><th>Objective</th><th>AI</th><th>Final</th></tr>';
+    ? '<tr><th>شماره Task</th><th>عنوان</th><th>نوع مورد</th><th>کارشناس</th><th colspan="2">—</th><th>Objective</th><th>AI</th><th>Final</th><th>آخرین واکشی</th><th>آخرین تحلیل</th></tr>'
+    : '<tr><th>شماره مورد</th><th>عنوان</th><th>نوع مورد</th><th>کارشناس</th><th>Note</th><th>Task</th><th>Objective</th><th>AI</th><th>Final</th><th>آخرین واکشی</th><th>آخرین تحلیل</th></tr>';
 
   document.getElementById('cases-table-body').innerHTML = res.rows.map(r => `
     <tr class="clickable" onclick="openCaseDetail('${r.case_key.replace(/'/g, "\\'")}','${period}')">
@@ -1493,6 +1513,7 @@ async function loadCasesTable(page) {
       ${isTask ? '<td colspan="2">—</td>' : `<td>${r.notes}</td><td>${r.tasks}</td>`}
       <td>${fmt(r.objective_score)}</td><td>${r.ai_analyzed ? `<span class="badge good" title="تحلیل AI قبلاً انجام شده است">${fmt(r.ai_score)} ✓</span>` : '<span class="badge muted">انجام نشده</span>'}</td>
       <td><span class="badge ${scoreBadgeClass(r.final_score)}">${fmt(r.final_score)}</span></td>
+      <td>${dateDual(r.last_fetched_at)}</td><td>${dateDual(r.last_analyzed_at)}</td>
     </tr>`).join('');
   const start = page * state.casesPageSize;
   document.getElementById('cases-page-info').textContent =
@@ -1791,6 +1812,7 @@ async function loadSuspicious() {
     <tr class="clickable" data-case-number="${escapeHtml(row.case_number || '')}" onclick="openCaseDetail('${row.case_key.replace(/'/g, "\\'")}','all')">
       <td>${row.case_number || '—'}</td><td>${row.case_title || '—'}</td><td>${row.service || '—'}</td>
       <td><div class="chip-list">${row.reasons.map(rs => `<span class="chip">${rs}</span>`).join('')}</div></td>
+      <td>${dateDual(row.last_fetched_at)}</td><td>${dateDual(row.last_analyzed_at)}</td>
     </tr>`).join('');
   filterSuspiciousTable();
 }

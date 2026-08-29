@@ -935,6 +935,12 @@ class Api:
                     if result.get("mode") == "general"
                     else len(set(result["period1"].cases) | set(result["period2"].cases))
                 )
+                analysis_timestamp = datetime.now().isoformat()
+                result["_analyzed_at"] = analysis_timestamp
+                result["_case_analyzed_at"] = {
+                    str(key): analysis_timestamp
+                    for key in (selected_case_keys or set())
+                }
                 self.result = result
                 snapshot = db.get_latest_crm_snapshot()
                 db.save_local_analysis(
@@ -1268,6 +1274,14 @@ class Api:
         cases, scores = self._resolve_period(period)
         from analysis.experts import primary_expert
         rows = []
+        snapshot = db.get_latest_crm_snapshot()
+        fetched_at = (
+            (snapshot or {}).get("metadata", {}).get("fetched_at")
+            or (snapshot or {}).get("fetched_at")
+        )
+        analysis_record = db.get_local_analysis_record() or {}
+        analysis_at = analysis_record.get("saved_at")
+        case_analysis_times = self.result.get("_case_analyzed_at", {})
         experts_seen = set()
         status_reasons_seen = set()
         services_seen = set()
@@ -1304,6 +1318,8 @@ class Api:
                 "ai_score": b.ai_score if b else None,
                 "final_score": b.final_score if b else None,
                 "ai_analyzed": ai_analyzed,
+                "last_fetched_at": fetched_at,
+                "last_analyzed_at": case_analysis_times.get(str(key), analysis_at),
             })
         rows.sort(key=lambda r: (r["final_score"] is None, r["final_score"] or 0))
         total = len(rows)
@@ -1323,6 +1339,11 @@ class Api:
         from analysis.experts import primary_expert
         from analysis.suspicious import normalize_reason
         all_rows = self.result["suspicious"]
+        snapshot = db.get_latest_crm_snapshot() or {}
+        snapshot_meta = snapshot.get("metadata") or {}
+        fetched_at = snapshot_meta.get("fetched_at") or snapshot.get("fetched_at")
+        analysis_at = (db.get_local_analysis_record() or {}).get("saved_at")
+        case_analysis_times = self.result.get("_case_analyzed_at", {})
         source_result = self.result.get("general")
         source_cases = source_result.cases if source_result else (
             self.dataset.cases if self.dataset else self.result["period2"].cases
@@ -1334,7 +1355,9 @@ class Api:
         rows = [
             {"case_key": s.case_key, "case_number": s.case_number, "case_title": s.case_title,
              "service": source_case(s.case_key).service if source_case(s.case_key) else None,
-             "reasons": s.reasons}
+             "reasons": s.reasons,
+             "last_fetched_at": fetched_at,
+             "last_analyzed_at": case_analysis_times.get(str(s.case_key), analysis_at)}
             for s in all_rows
             if (not expert_filter or (
                 source_case(s.case_key)
