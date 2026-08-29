@@ -85,6 +85,9 @@ class Api:
             if snapshot and snapshot.get("payload"):
                 self.dataset = dataset_from_payload(snapshot["payload"])
                 db.set_setting("data_source", "crm")
+                saved_result = db.get_local_analysis()
+                if saved_result:
+                    self.result = saved_result
         except Exception:  # noqa: BLE001
             traceback.print_exc()
 
@@ -193,6 +196,9 @@ class Api:
             "total_notes": len(self.dataset.notes),
             "total_tasks": len(self.dataset.tasks),
         }
+
+    def get_analysis_info(self) -> dict:
+        return {"ok": True, "loaded": bool(self.result)}
 
     def set_data_source(self, source: str) -> dict:
         value = "crm" if source == "crm" else "file"
@@ -338,6 +344,7 @@ class Api:
             self._analysis_generation += 1
             self.dataset = dataset
             self.result = None
+        db.clear_local_analysis()
         return {
             "ok": True, "source": "CRM", "view_name": settings["view_name"],
             "fetched_at": metadata["fetched_at"], "total_cases": len(dataset.cases),
@@ -431,6 +438,7 @@ class Api:
             self._analysis_generation += 1
             self.result = None
             self.status = {"running": False, "done": False, "cancelled": False, "stage": "", "current": 0, "total": 0, "error": None}
+        db.clear_local_analysis()
         db.set_setting("data_source", "file")
         ns, ts = self.dataset.notes_summary, self.dataset.tasks_summary
         dates = [n.note_date for n in self.dataset.notes if n.note_date] + \
@@ -450,6 +458,7 @@ class Api:
             self._analysis_generation += 1
             self.dataset = None
             self.result = None
+            db.clear_local_analysis()
             if self._analysis_cancel_event:
                 self._analysis_cancel_event.set()
             self.status = {"running": False, "done": False, "cancelled": False, "stage": "", "current": 0, "total": 0, "error": None}
@@ -886,6 +895,7 @@ class Api:
                     else len(set(result["period1"].cases) | set(result["period2"].cases))
                 )
                 self.result = result
+                db.save_local_analysis(result)
                 self.status.update({
                     "running": False, "done": True, "stage": "پایان یافت",
                     "analyzed_case_count": analyzed_count,

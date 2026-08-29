@@ -556,6 +556,12 @@ async function loadCrmSettings() {
     document.getElementById('dataset-status').textContent =
       `${local.total_cases.toLocaleString('fa-IR')} مورد | Snapshot محلی CRM`;
     await initializeCaseSelection();
+    const analysis = await api().get_analysis_info();
+    if (analysis?.loaded) {
+      state.analysisDone = true;
+      document.getElementById('run-result').innerHTML =
+        '<div class="ok-box">آخرین نتیجه تحلیل محلی بازیابی شد؛ برای به‌روزرسانی، تحلیل را دوباره اجرا کنید.</div>';
+    }
   }
 }
 

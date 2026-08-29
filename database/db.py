@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import pickle
 import sqlite3
 import sys
 from pathlib import Path
@@ -118,6 +119,11 @@ def init_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_crm_snapshots_fetched
                 ON crm_snapshots(fetched_at);
+            CREATE TABLE IF NOT EXISTS local_analysis_state (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                saved_at TEXT NOT NULL,
+                payload BLOB NOT NULL
+            );
             """
         )
         conn.commit()
@@ -216,6 +222,42 @@ def get_latest_crm_snapshot() -> dict | None:
         }
     except (json.JSONDecodeError, TypeError):
         return None
+    finally:
+        conn.close()
+
+
+def save_local_analysis(result) -> None:
+    import datetime
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO local_analysis_state(id, saved_at, payload) VALUES (1, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET saved_at=excluded.saved_at, payload=excluded.payload",
+            (datetime.datetime.now().isoformat(), sqlite3.Binary(pickle.dumps(result, protocol=pickle.HIGHEST_PROTOCOL))),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_local_analysis():
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT payload FROM local_analysis_state WHERE id = 1").fetchone()
+        if not row:
+            return None
+        return pickle.loads(row["payload"])
+    except (pickle.PickleError, EOFError, TypeError, ValueError, AttributeError):
+        return None
+    finally:
+        conn.close()
+
+
+def clear_local_analysis() -> None:
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM local_analysis_state")
+        conn.commit()
     finally:
         conn.close()
 
