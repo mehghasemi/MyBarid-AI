@@ -6,9 +6,11 @@ Invoke-WebRequest -UseDefaultCredentials. No CRM write operation is exposed.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import subprocess
 from datetime import datetime
+from xml.etree import ElementTree
 from urllib.parse import quote
 
 from data.cleaner import build_cases
@@ -114,6 +116,23 @@ def _looks_like_guid(value: str) -> bool:
     return len(parts) == 5 and all(parts) and all(
         all(ch in "0123456789abcdefABCDEF" for ch in part) for part in parts
     )
+
+
+def _add_modified_since_filter(fetchxml: str, since: datetime) -> str:
+    """Add an annotation modifiedon watermark without replacing View filters."""
+    root = ElementTree.fromstring(fetchxml)
+    entity = root.find("./entity")
+    if entity is None:
+        raise CRMClientError("ساختار FetchXML View قابل تشخیص نیست.")
+    target = entity.find("./filter")
+    if target is None:
+        target = ElementTree.SubElement(entity, "filter", {"type": "and"})
+    ElementTree.SubElement(target, "condition", {
+        "attribute": "modifiedon",
+        "operator": "gt",
+        "value": since.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    })
+    return ElementTree.tostring(root, encoding="unicode", short_empty_elements=True)
 
 
 def _powershell_get_json(url: str, username: str = "", password: str = "") -> dict:
@@ -245,12 +264,13 @@ class DynamicsCRMClient:
                                        self.username, self.password)
         return {"ok": True, "api_root": self.api_root, "user": payload}
 
-    def fetch_view_dataset(self) -> tuple[Dataset, dict]:
+    def fetch_view_dataset(self, since: datetime | None = None) -> tuple[Dataset, dict]:
         view = self._get_user_view()
         fetchxml = view.get("fetchxml")
         if not fetchxml:
             raise CRMClientError("View فاقد FetchXML قابل اجرا است.")
-        url = f"{self.api_root}/annotations?fetchXml={quote(fetchxml, safe='')}"
+        query_fetchxml = _add_modified_since_filter(fetchxml, since) if since else fetchxml
+        url = f"{self.api_root}/annotations?fetchXml={quote(query_fetchxml, safe='')}"
         payload = _powershell_get_json(url, self.username, self.password)
         rows = payload.get("value") or []
         notes: list[NoteRecord] = []
@@ -292,7 +312,12 @@ class DynamicsCRMClient:
             notes=notes, tasks=[], cases=cases, unmatched_tasks=unmatched,
             notes_summary=summary, tasks_summary=summary,
         )
+        modified_dates = [n.note_date for n in notes if n.note_date]
         return dataset, {
             "view_name": self.view_name, "view_id": view.get("userqueryid"),
             "fetched_at": now, "row_count": len(rows), "api_root": self.api_root,
+            "sync_mode": "incremental" if since else "full",
+            "since": _iso(since),
+            "max_modified_on": _iso(max(modified_dates)) if modified_dates else _iso(since),
+            "fetchxml_hash": hashlib.sha256(fetchxml.encode("utf-8")).hexdigest(),
         }

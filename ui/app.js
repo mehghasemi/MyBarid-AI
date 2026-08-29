@@ -493,6 +493,7 @@ function crmPayload() {
     view_name: document.getElementById('crm-view-name').value.trim(),
     username: document.getElementById('crm-username')?.value.trim() || '',
     password: document.getElementById('crm-password')?.value || '',
+    full_sync: Boolean(document.getElementById('crm-full-sync')?.checked),
   };
 }
 
@@ -603,7 +604,7 @@ async function syncCrmView() {
       state.dateBounds = res.date_bounds;
       document.getElementById('dataset-status').textContent =
         `${res.total_cases.toLocaleString('fa-IR')} مورد | داده CRM بارگذاری شد`;
-      box.textContent = `دریافت موفق: ${res.total_notes} Note و ${res.total_cases} مورد. ` +
+      box.textContent = `دریافت ${res.sync_mode === 'incremental' ? 'تغییرات' : 'کامل'} موفق: ${res.total_notes} Note و ${res.total_cases} مورد. ` +
         `رکورد جدید/تغییریافته: ${res.new_or_changed_notes || 0}، بدون تغییر: ${res.unchanged_notes || 0}، حذف‌شده: ${res.deleted_notes || 0}. ` +
         res.warning;
       await initializeCaseSelection();

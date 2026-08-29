@@ -258,17 +258,41 @@ class Api:
         payload = payload or {}
         settings = self.save_crm_settings(payload)
         client = DynamicsCRMClient(**self._crm_client_settings(settings, payload))
+        previous = db.get_latest_crm_snapshot()
+        previous_meta = (previous or {}).get("metadata") or {}
+        previous_payload = (previous or {}).get("payload") or {}
+        same_view = bool(previous and previous.get("view_name") == settings["view_name"])
+        sync_count = int(previous_meta.get("sync_count") or 0)
+        force_full = bool(payload.get("full_sync"))
+        # Deleted records are not returned by a modifiedon query, so perform a
+        # complete reconciliation periodically or when explicitly requested.
+        incremental = (
+            same_view and not force_full
+            and previous_meta.get("max_modified_on")
+            and sync_count % 10 != 9
+        )
+        since = datetime.fromisoformat(previous_meta["max_modified_on"]) if incremental else None
         try:
-            dataset, metadata = client.fetch_view_dataset()
+            dataset, metadata = client.fetch_view_dataset(since=since)
         except CRMClientError as exc:
             return {"ok": False, "error": str(exc)}
-        previous = db.get_latest_crm_snapshot()
         previous_notes = {
             str(row.get("note_id")): row for row in
-            ((previous or {}).get("payload") or {}).get("notes", [])
+            previous_payload.get("notes", [])
             if row.get("note_id")
         }
-        current_payload = dataset_to_payload(dataset)
+        fetched_payload = dataset_to_payload(dataset)
+        fetched_notes = {
+            str(row.get("note_id")): row for row in fetched_payload.get("notes", [])
+            if row.get("note_id")
+        }
+        if incremental:
+            merged_notes = dict(previous_notes)
+            merged_notes.update(fetched_notes)
+            current_payload = {"notes": list(merged_notes.values()), "tasks": []}
+            dataset = dataset_from_payload(current_payload)
+        else:
+            current_payload = fetched_payload
         current_notes = {
             str(row.get("note_id")): row for row in current_payload.get("notes", [])
             if row.get("note_id")
@@ -280,7 +304,11 @@ class Api:
         metadata.update({
             "new_or_changed_notes": len(changed_keys),
             "unchanged_notes": max(0, len(current_notes) - len(changed_keys)),
-            "deleted_notes": len(set(previous_notes) - set(current_notes)),
+            "deleted_notes": (
+                len(set(previous_notes) - set(current_notes))
+                if not incremental else 0
+            ),
+            "sync_count": sync_count + 1,
         })
         db.save_crm_snapshot("dynamics365", settings["view_name"], metadata["fetched_at"],
                              metadata, current_payload)
@@ -297,6 +325,7 @@ class Api:
             "new_or_changed_notes": metadata["new_or_changed_notes"],
             "unchanged_notes": metadata["unchanged_notes"],
             "deleted_notes": metadata["deleted_notes"],
+            "sync_mode": metadata.get("sync_mode", "full"),
             "warning": "در این مرحله فقط Noteهای View دریافت می‌شوند؛ Taskها هنوز از CRM خوانده نمی‌شوند.",
         }
 
