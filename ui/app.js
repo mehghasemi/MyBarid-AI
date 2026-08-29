@@ -1792,6 +1792,21 @@ function renderCaseAiSuggestions(items) {
     problem_understanding: 'درک صحیح مسئله',
   };
   const confidenceNames = { high: 'اطمینان زیاد', medium: 'اطمینان متوسط', low: 'اطمینان کم' };
+  const suggestionTextFa = (value) => {
+    const text = String(value || '').trim();
+    if (!text) return text;
+    const known = {
+      'Require detailed implementation steps': 'الزام ارائه مراحل اجرایی دقیق',
+      'Activate criterion for case or service type': 'فعال‌سازی معیار برای نوع مورد یا سرویس',
+      'Solution lacks specific steps for the conversion process and contingency planning':
+        'راه‌حل ارائه‌شده مراحل مشخص تبدیل و برنامه جایگزین در شرایط خطا را ندارد.',
+      'Activate a criterion requiring detailed implementation steps including rollback procedures for data transfer operations':
+        'معیاری فعال شود که ارائه مراحل اجرایی دقیق و روش بازگشت برای عملیات انتقال داده را الزامی کند.',
+      'Expert mentions 5-day timeline and technical specs but no detailed conversion steps or contingency plans':
+        'کارشناس به زمان‌بندی پنج‌روزه و مشخصات فنی اشاره کرده، اما مراحل دقیق تبدیل یا برنامه جایگزین ارائه نشده است.',
+    };
+    return known[text] || text;
+  };
   box.innerHTML = `
     <div class="card" style="border-right:4px solid var(--accent);padding:14px">
       <div style="font-weight:700;font-size:15px;margin-bottom:8px">پیشنهادهای بهبود معیارها</div>
@@ -1802,7 +1817,7 @@ function renderCaseAiSuggestions(items) {
       </div>
       ${items.map(item => `
         <div style="padding:12px 0;border-top:1px solid var(--border)">
-          <div style="font-weight:600;font-size:13px;margin-bottom:7px">${escapeHtml(item.title || 'پیشنهاد بهبود')}
+          <div style="font-weight:600;font-size:13px;margin-bottom:7px">${escapeHtml(suggestionTextFa(item.title) || 'پیشنهاد بهبود')}
             <span class="badge muted">${escapeHtml(typeNames[item.type] || item.type || 'نوع پیشنهاد مشخص نشده')}</span>
           </div>
           <div style="font-size:12px;line-height:1.9">
@@ -1810,9 +1825,9 @@ function renderCaseAiSuggestions(items) {
             <div><b>میزان اطمینان AI:</b> ${escapeHtml(confidenceNames[item.confidence] || 'نامشخص')}</div>
           </div>
           <div style="font-size:12px;line-height:1.9;color:var(--muted);margin-top:7px">
-            <div><b>مشکل یا الگوی شناسایی‌شده:</b> ${escapeHtml(item.problem || 'موردی ثبت نشده است.')}</div>
-            <div><b>پیشنهاد عملی:</b> ${escapeHtml(item.suggestion || 'پیشنهاد تکمیلی ارائه نشده است.')}</div>
-            <div><b>شواهد مورد استفاده:</b> ${escapeHtml(item.evidence || 'شواهد کافی ثبت نشده است.')}</div>
+            <div><b>مشکل یا الگوی شناسایی‌شده:</b> ${escapeHtml(suggestionTextFa(item.problem) || 'موردی ثبت نشده است.')}</div>
+            <div><b>پیشنهاد عملی:</b> ${escapeHtml(suggestionTextFa(item.suggestion) || 'پیشنهاد تکمیلی ارائه نشده است.')}</div>
+            <div><b>شواهد مورد استفاده:</b> ${escapeHtml(suggestionTextFa(item.evidence) || 'شواهد کافی ثبت نشده است.')}</div>
           </div>
         </div>`).join('')}
     </div>`;

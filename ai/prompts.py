@@ -43,6 +43,10 @@ repeated or concrete evidence in this Case. Suggestions are proposals only;
 never change a Rule or score. Use only these criterion IDs:
 notes_result_recorded, task_presence_when_needed, final_status_clear,
 solution_appropriateness, problem_understanding.
+All human-readable fields in the response must be written in clear Persian
+(فارسی)، including title, problem, suggestion, evidence, na_reason, and
+criterion explanations. Keep only technical identifiers, event types, and
+criterion IDs in English. Do not return English prose.
 Allowed suggestion types:
 add_pattern, activate_criterion, new_rule.
 Return an empty array when there is no reliable suggestion. When suggestions
