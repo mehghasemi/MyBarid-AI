@@ -9,22 +9,32 @@ VALID_CONFIDENCE = {"low", "medium", "high"}
 
 
 def extract_json(text: str) -> dict | None:
-    text = text.strip()
-    text = re.sub(r"^```(?:json)?", "", text, flags=re.IGNORECASE).strip()
-    text = re.sub(r"```$", "", text).strip()
+    """Extract the first complete JSON object from an AI response.
+
+    Providers sometimes wrap valid JSON in a Markdown fence or a short
+    explanation. A greedy ``\\{.*\\}`` regex breaks when the explanation also
+    contains braces or when the response includes more than one JSON block.
+    ``raw_decode`` understands quoted braces and nested objects correctly.
+    """
+    if not isinstance(text, str):
+        return None
+    text = text.lstrip("\ufeff").strip()
+    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*```$", "", text).strip()
+    decoder = json.JSONDecoder()
     try:
-        value = json.loads(text)
+        value, _ = decoder.raw_decode(text)
         return value if isinstance(value, dict) else None
     except json.JSONDecodeError:
         pass
-    match = re.search(r"\{.*\}", text, flags=re.DOTALL)
-    if not match:
-        return None
-    try:
-        value = json.loads(match.group(0))
-        return value if isinstance(value, dict) else None
-    except json.JSONDecodeError:
-        return None
+    for match in re.finditer(r"\{", text):
+        try:
+            value, _ = decoder.raw_decode(text[match.start():])
+            if isinstance(value, dict):
+                return value
+        except json.JSONDecodeError:
+            continue
+    return None
 
 
 def _criterion_payload(payload: dict, criterion_id: str) -> dict[str, Any]:

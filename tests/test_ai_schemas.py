@@ -43,6 +43,17 @@ def test_extract_json_rejects_non_object():
     assert extract_json("[1, 2]") is None
 
 
+def test_extract_json_accepts_fenced_json_with_preamble():
+    assert extract_json('پاسخ نهایی:\n```json\n{"criteria": {}}\n```') == {
+        "criteria": {}
+    }
+
+
+def test_extract_json_handles_nested_braces_and_trailing_text():
+    text = 'نتیجه: {"criteria": {"x": {"evidence": "متن {واقعی}"}}} پایان'
+    assert extract_json(text)["criteria"]["x"]["evidence"] == "متن {واقعی}"
+
+
 def test_malformed_ai_payload_does_not_raise():
     from ai.analyzer import _payload_to_scores
 
