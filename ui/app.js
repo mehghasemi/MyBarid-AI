@@ -662,11 +662,18 @@ async function syncCrmView() {
   if (button) button.disabled = true;
   box.textContent = 'در حال دریافت داده از CRM...';
   try {
-    const started = await api().sync_crm_view(crmPayload());
+    const payload = crmPayload();
+    payload.include_related_activities = Boolean(document.getElementById('crm-related-activities')?.checked);
+    const started = await api().sync_crm_view(payload);
     if (!started.ok) { box.textContent = `خطا: ${started.error}`; return; }
+    const startedAt = Date.now();
     const poll = async () => {
       const status = await api().get_crm_sync_status();
       if (status.running) {
+        if (Date.now() - startedAt > 90000) {
+          box.textContent = 'واکنش CRM بیش از ۹۰ ثانیه طول کشید. View کوچک‌تری انتخاب کنید یا دریافت داده‌های وابسته را خاموش کنید.';
+          return;
+        }
         box.textContent = status.stage || 'در حال دریافت داده از CRM...';
         setTimeout(poll, 500);
         return;

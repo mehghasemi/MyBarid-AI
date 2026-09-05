@@ -335,7 +335,10 @@ class Api:
         )
         since = datetime.fromisoformat(previous_meta["max_modified_on"]) if incremental else None
         try:
-            dataset, metadata = client.fetch_view_dataset(since=since)
+            dataset, metadata = client.fetch_view_dataset(
+                since=since,
+                include_related_activities=bool(payload.get("include_related_activities")),
+            )
         except CRMClientError as exc:
             return {"ok": False, "error": str(exc)}
         previous_notes = {
@@ -396,7 +399,11 @@ class Api:
             "unchanged_notes": metadata["unchanged_notes"],
             "deleted_notes": metadata["deleted_notes"],
             "sync_mode": metadata.get("sync_mode", "full"),
-            "warning": "در این مرحله فقط Noteهای View دریافت می‌شوند؛ Taskها هنوز از CRM خوانده نمی‌شوند.",
+            "warning": (
+                "Note و Taskهای وابسته دریافت شدند."
+                if metadata.get("related_activities")
+                else "برای سرعت، فقط رکوردهای View دریافت شدند؛ دریافت Note و Taskهای وابسته اختیاری است."
+            ),
         }
 
     @staticmethod

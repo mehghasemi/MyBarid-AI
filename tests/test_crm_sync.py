@@ -106,7 +106,7 @@ def test_crm_view_expands_all_case_notes_and_tasks():
             client, "_get_user_view",
             return_value={"fetchxml": "<fetch><entity name='annotation'/></fetch>"},
         ):
-            dataset, metadata = client.fetch_view_dataset()
+            dataset, metadata = client.fetch_view_dataset(include_related_activities=True)
 
     assert len(dataset.notes) == 2
     assert len(dataset.tasks) == 1

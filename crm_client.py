@@ -23,6 +23,7 @@ class CRMClientError(RuntimeError):
 
 
 DEFAULT_BASE_URL = "https://crm.baridsoft.ir"
+CRM_PROCESS_TIMEOUT_SECONDS = 60
 DEFAULT_ORGANIZATION = "Main"
 DEFAULT_API_VERSION = "v9.1"
 DEFAULT_VIEW_NAME = "داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر"
@@ -197,11 +198,11 @@ def _powershell_get_json(url: str, username: str = "", password: str = "") -> di
         "$env:MYBARID_CRM_USER,$sec); "
         "$r=Invoke-WebRequest -Uri $u -Credential $cred "
         "-Headers @{Accept='application/json';'OData-Version'='4.0';"
-        "Prefer='odata.include-annotations=\"*\"'} -TimeoutSec 120 "
+        "Prefer='odata.include-annotations=\"*\"'} -TimeoutSec 45 "
         "} else { "
         "$r=Invoke-WebRequest -Uri $u -UseDefaultCredentials "
         "-Headers @{Accept='application/json';'OData-Version'='4.0';"
-        "Prefer='odata.include-annotations=\"*\"'} -TimeoutSec 120 "
+        "Prefer='odata.include-annotations=\"*\"'} -TimeoutSec 45 "
         "}; "
         "$bytes = $r.RawContentStream.ToArray(); "
         "$content = [System.Text.Encoding]::UTF8.GetString($bytes); "
@@ -222,7 +223,8 @@ def _powershell_get_json(url: str, username: str = "", password: str = "") -> di
             creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         completed = subprocess.run(
             ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=150,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=CRM_PROCESS_TIMEOUT_SECONDS,
             env=env, check=False, startupinfo=startupinfo,
             creationflags=creationflags,
         )
@@ -313,7 +315,11 @@ class DynamicsCRMClient:
                                        self.username, self.password)
         return {"ok": True, "api_root": self.api_root, "user": payload}
 
-    def fetch_view_dataset(self, since: datetime | None = None) -> tuple[Dataset, dict]:
+    def fetch_view_dataset(
+        self,
+        since: datetime | None = None,
+        include_related_activities: bool = False,
+    ) -> tuple[Dataset, dict]:
         view = self._get_user_view()
         fetchxml = view.get("fetchxml")
         if not fetchxml:
@@ -354,7 +360,7 @@ class DynamicsCRMClient:
             if _value(row, "annotationid")
         }
         expanded_tasks: list[dict] = []
-        for case_id in sorted(case_ids):
+        for case_id in sorted(case_ids) if include_related_activities else []:
             note_url = (
                 f"{self.api_root}/annotations?"
                 f"$filter=_objectid_value%20eq%20{case_id}"
@@ -441,7 +447,11 @@ class DynamicsCRMClient:
             unique_cases=len(cases), incomplete_rows=sum(1 for n in notes if not n.description),
             usable_columns=0, total_columns=0, mapping={}, missing_required_labels=[],
             ambiguous={}, unmatched_headers=[],
-            warnings=["تمام Noteها و Taskهای مرتبط با Caseهای پیدا‌شده، مستقل از تاریخ واکشی شدند."],
+            warnings=[
+                "Note و Taskهای وابسته نیز دریافت شدند."
+                if include_related_activities
+                else "فقط رکوردهای View دریافت شدند؛ دریافت Note و Taskهای وابسته فعال نشده است."
+            ],
         )
         dataset = Dataset(
             notes=notes, tasks=tasks, cases=cases, unmatched_tasks=unmatched,
@@ -455,4 +465,5 @@ class DynamicsCRMClient:
             "since": _iso(since),
             "max_modified_on": _iso(max(modified_dates)) if modified_dates else _iso(since),
             "fetchxml_hash": hashlib.sha256(fetchxml.encode("utf-8")).hexdigest(),
+            "related_activities": bool(include_related_activities),
         }
