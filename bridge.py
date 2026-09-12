@@ -300,7 +300,10 @@ class Api:
     def _sync_crm_view_worker(self, payload: dict) -> None:
         try:
             with self._lock:
-                self._crm_sync_status["stage"] = "در حال دریافت View از CRM..."
+                self._crm_sync_status.update({
+                    "stage": "در حال دریافت View از CRM...", "progress": 0,
+                    "progress_completed": 0, "progress_total": 0, "progress_detail": "",
+                })
             result = self._perform_crm_sync(payload)
             with self._lock:
                 self._crm_sync_status.update({
@@ -334,10 +337,20 @@ class Api:
             and sync_count % 10 != 9
         )
         since = datetime.fromisoformat(previous_meta["max_modified_on"]) if incremental else None
+        def report_progress(stage, completed=0, total=0, detail=""):
+            with self._lock:
+                self._crm_sync_status.update({
+                    "stage": stage,
+                    "progress": round((completed / total) * 100) if total else 0,
+                    "progress_completed": completed,
+                    "progress_total": total,
+                    "progress_detail": detail,
+                })
         try:
             dataset, metadata = client.fetch_view_dataset(
                 since=since,
                 include_related_activities=bool(payload.get("include_related_activities")),
+                progress_callback=report_progress,
             )
         except CRMClientError as exc:
             return {"ok": False, "error": str(exc)}

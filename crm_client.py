@@ -319,13 +319,20 @@ class DynamicsCRMClient:
         self,
         since: datetime | None = None,
         include_related_activities: bool = False,
+        progress_callback=None,
     ) -> tuple[Dataset, dict]:
+        def progress(stage, completed=0, total=0, detail=""):
+            if progress_callback:
+                progress_callback(stage, completed, total, detail)
+
+        progress("در حال یافتن View انتخاب‌شده از CRM...")
         view = self._get_user_view()
         fetchxml = view.get("fetchxml")
         if not fetchxml:
             raise CRMClientError("View فاقد FetchXML قابل اجرا است.")
         query_fetchxml = _add_modified_since_filter(fetchxml, since) if since else fetchxml
         url = f"{self.api_root}/annotations?fetchXml={quote(query_fetchxml, safe='')}"
+        progress("در حال دریافت صفحه اول View...")
         payload = _powershell_get_json(url, self.username, self.password)
         rows = list(payload.get("value") or [])
         # Dataverse may paginate FetchXML results. The first response can
@@ -334,10 +341,12 @@ class DynamicsCRMClient:
         next_link = payload.get("@odata.nextLink") or payload.get("odata.nextLink")
         page_count = 1
         while next_link and page_count < 1000:
+            progress("در حال دریافت صفحات بعدی View...", page_count, 0, f"صفحه {page_count}")
             page_payload = _powershell_get_json(next_link, self.username, self.password)
             rows.extend(page_payload.get("value") or [])
             next_link = page_payload.get("@odata.nextLink") or page_payload.get("odata.nextLink")
             page_count += 1
+        progress("دریافت View انجام شد", page_count, page_count, f"{len(rows):,} رکورد")
 
         # The selected View may contain only a subset of Notes for a Case.
         # Expand every Case found by the View to all related Notes and Tasks;
@@ -360,7 +369,10 @@ class DynamicsCRMClient:
             if _value(row, "annotationid")
         }
         expanded_tasks: list[dict] = []
-        for case_id in sorted(case_ids) if include_related_activities else []:
+        related_case_ids = sorted(case_ids) if include_related_activities else []
+        for index, case_id in enumerate(related_case_ids, start=1):
+            progress("در حال دریافت Note و Taskهای وابسته...", index - 1,
+                     len(related_case_ids), f"مورد {index - 1} از {len(related_case_ids)}")
             note_url = (
                 f"{self.api_root}/annotations?"
                 f"$filter=_objectid_value%20eq%20{case_id}"
@@ -387,6 +399,8 @@ class DynamicsCRMClient:
                     **case_context[case_id], **task_row,
                     "_regardingobjectid_value": case_id,
                 })
+            progress("در حال دریافت Note و Taskهای وابسته...", index,
+                     len(related_case_ids), f"مورد {index} از {len(related_case_ids)}")
 
         rows = expanded_notes
         notes: list[NoteRecord] = []

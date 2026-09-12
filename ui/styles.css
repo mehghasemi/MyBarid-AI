@@ -656,6 +656,8 @@ label.field-label { display:block; font-size: 12px; color: var(--muted); margin-
 
 .progress-bar { height: 8px; background: #e6eaf0; border-radius: 6px; overflow: hidden; margin: 10px 0; }
 .progress-bar > div { height: 100%; background: var(--accent); transition: width .3s; }
+.crm-progress { margin: 10px 0 6px; height: 10px; }
+.crm-progress-meta { font-size: 12px; color: var(--muted); }
 
 .criteria-cat { margin-bottom: 18px; }
 .crit-chip-wrap { display: flex; flex-wrap: wrap; gap: 8px; }

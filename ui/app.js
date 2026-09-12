@@ -661,12 +661,23 @@ async function syncCrmView() {
   const button = document.querySelector('button[onclick="syncCrmView()"]');
   if (button) button.disabled = true;
   box.textContent = 'در حال دریافت داده از CRM...';
+  const startedAt = Date.now();
+  const formatElapsed = () => {
+    const seconds = Math.floor((Date.now() - startedAt) / 1000);
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  };
+  const renderCrmProgress = (status) => {
+    const percent = Number.isFinite(status.progress) && status.progress > 0 ? status.progress : 8;
+    const detail = status.progress_detail ? ` — ${status.progress_detail}` : '';
+    box.innerHTML = `<div>${escapeHtml(status.stage || 'در حال دریافت داده از CRM...')}${escapeHtml(detail)}</div>
+      <div class="progress-bar crm-progress"><div style="width:${Math.min(100, percent)}%"></div></div>
+      <div class="crm-progress-meta">زمان سپری‌شده: ${formatElapsed()}${status.progress_total ? ` | پیشرفت: ${status.progress_completed} از ${status.progress_total}` : ' | تعداد کل هنوز از CRM اعلام نشده است'}</div>`;
+  };
   try {
     const payload = crmPayload();
     payload.include_related_activities = Boolean(document.getElementById('crm-related-activities')?.checked);
     const started = await api().sync_crm_view(payload);
     if (!started.ok) { box.textContent = `خطا: ${started.error}`; return; }
-    const startedAt = Date.now();
     const poll = async () => {
       const status = await api().get_crm_sync_status();
       if (status.running) {
@@ -674,7 +685,7 @@ async function syncCrmView() {
           box.textContent = 'واکنش CRM بیش از ۹۰ ثانیه طول کشید. View کوچک‌تری انتخاب کنید یا دریافت داده‌های وابسته را خاموش کنید.';
           return;
         }
-        box.textContent = status.stage || 'در حال دریافت داده از CRM...';
+        renderCrmProgress(status);
         setTimeout(poll, 500);
         return;
       }
