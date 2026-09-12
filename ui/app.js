@@ -35,6 +35,28 @@ document.querySelectorAll('.nav-item').forEach(el => {
   const analysisPages = new Set(['dashboard', 'general', 'comparison', 'ranking', 'cases', 'suspicious', 'data-quality', 'mgmt-report', 'export']);
   if (analysisPages.has(el.dataset.page)) el.classList.add('analysis-nav');
   el.addEventListener('click', () => showPage(el.dataset.page));
+  if (el.dataset.help) {
+    let tip = null;
+    const hideTip = () => { if (tip) { tip.remove(); tip = null; } };
+    const showTip = () => {
+      hideTip();
+      tip = document.createElement('div');
+      tip.className = 'sidebar-help-tooltip';
+      tip.textContent = el.dataset.help;
+      document.body.appendChild(tip);
+      const rect = el.getBoundingClientRect();
+      const width = Math.min(390, Math.max(280, window.innerWidth * 0.28));
+      tip.style.width = width + 'px';
+      const left = Math.max(8, Math.min(window.innerWidth - width - 8, rect.left - width - 10));
+      const top = Math.max(8, Math.min(window.innerHeight - tip.offsetHeight - 8, rect.top));
+      tip.style.left = left + 'px';
+      tip.style.top = top + 'px';
+    };
+    el.addEventListener('mouseenter', showTip);
+    el.addEventListener('mouseleave', hideTip);
+    el.addEventListener('focus', showTip);
+    el.addEventListener('blur', hideTip);
+  }
 });
 
 function activateModule(moduleName) {
