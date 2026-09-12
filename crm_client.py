@@ -24,7 +24,12 @@ class CRMClientError(RuntimeError):
 
 
 DEFAULT_BASE_URL = "https://crm.baridsoft.ir"
-CRM_PROCESS_TIMEOUT_SECONDS = 60
+# The on-premises Dynamics endpoint can take longer than the default PowerShell
+# request timeout, especially when the selected View contains many records.
+# Keep the process timeout a little higher so a request timeout is reported by
+# the PowerShell layer instead of being mistaken for an empty JSON response.
+CRM_REQUEST_TIMEOUT_SECONDS = 180
+CRM_PROCESS_TIMEOUT_SECONDS = CRM_REQUEST_TIMEOUT_SECONDS + 30
 DEFAULT_ORGANIZATION = "Main"
 DEFAULT_API_VERSION = "v9.1"
 DEFAULT_VIEW_NAME = "داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر"
@@ -189,6 +194,7 @@ def _add_modified_since_filter(fetchxml: str, since: datetime) -> str:
 def _powershell_get_json(url: str, username: str = "", password: str = "") -> dict:
     # Keep the URL outside the command text to avoid command injection.
     command = (
+        "$ErrorActionPreference = 'Stop'; "
         "$utf8 = New-Object System.Text.UTF8Encoding($false); "
         "$OutputEncoding = $utf8; "
         "[Console]::OutputEncoding = $utf8; "
@@ -197,16 +203,22 @@ def _powershell_get_json(url: str, username: str = "", password: str = "") -> di
         "$sec=ConvertTo-SecureString $env:MYBARID_CRM_PASS -AsPlainText -Force; "
         "$cred=New-Object System.Management.Automation.PSCredential("
         "$env:MYBARID_CRM_USER,$sec); "
-        "$r=Invoke-WebRequest -Uri $u -Credential $cred "
+        "$r=Invoke-WebRequest -UseBasicParsing -Uri $u -Credential $cred "
         "-Headers @{Accept='application/json';'OData-Version'='4.0';"
-        "Prefer='odata.include-annotations=\"*\"'} -TimeoutSec 45 "
+        "Prefer='odata.include-annotations=\"*\"'} "
+        f"-TimeoutSec {CRM_REQUEST_TIMEOUT_SECONDS} "
         "} else { "
-        "$r=Invoke-WebRequest -Uri $u -UseDefaultCredentials "
+        "$r=Invoke-WebRequest -UseBasicParsing -Uri $u -UseDefaultCredentials "
         "-Headers @{Accept='application/json';'OData-Version'='4.0';"
-        "Prefer='odata.include-annotations=\"*\"'} -TimeoutSec 45 "
+        "Prefer='odata.include-annotations=\"*\"'} "
+        f"-TimeoutSec {CRM_REQUEST_TIMEOUT_SECONDS} "
+        "}; "
+        "if ($null -eq $r -or $null -eq $r.RawContentStream) { "
+        "throw 'CRM پاسخ خالی برگرداند.' "
         "}; "
         "$bytes = $r.RawContentStream.ToArray(); "
         "$content = [System.Text.Encoding]::UTF8.GetString($bytes); "
+        "if ([string]::IsNullOrWhiteSpace($content)) { throw 'CRM پاسخ خالی برگرداند.' }; "
         "$parsed = $content | ConvertFrom-Json; "
         "$parsed | ConvertTo-Json -Compress -Depth 100"
     )
@@ -229,18 +241,31 @@ def _powershell_get_json(url: str, username: str = "", password: str = "") -> di
             env=env, check=False, startupinfo=startupinfo,
             creationflags=creationflags,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise CRMClientError(f"ارتباط با CRM برقرار نشد: {exc}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise CRMClientError(
+            f"مهلت ارتباط با CRM پس از {CRM_PROCESS_TIMEOUT_SECONDS} ثانیه تمام شد؛ "
+            "سرور، View یا شبکه پاسخ نداد."
+        ) from exc
+    except OSError as exc:
+        raise CRMClientError(f"اجرای ابزار ارتباط با CRM ممکن نشد: {exc}") from exc
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout or "").strip()
-        raise CRMClientError(f"خطا در دریافت اطلاعات CRM: {detail[:700]}")
+        detail = detail[:700] or "جزئیات خطا از PowerShell دریافت نشد."
+        lowered = detail.casefold()
+        if "timed out" in lowered or "timeout" in lowered or "مهلت" in detail:
+            raise CRMClientError(
+                f"مهلت دریافت پاسخ از CRM پس از {CRM_REQUEST_TIMEOUT_SECONDS} ثانیه تمام شد. "
+                "اتصال شبکه، احراز هویت و سنگین‌بودن View را بررسی کنید."
+                f" جزئیات فنی: {detail}"
+            )
+        raise CRMClientError(f"خطا در دریافت اطلاعات CRM: {detail}")
     raw_response = completed.stdout
     if not isinstance(raw_response, str) or not raw_response.strip():
         detail = (completed.stderr or "").strip()
         suffix = f" جزئیات: {detail[:500]}" if detail else ""
         raise CRMClientError(
-            "CRM پاسخ JSON برنگرداند؛ احتمالاً پاسخ خالی، خطای احراز هویت "
-            f"یا خطای سرویس است.{suffix}"
+            "CRM پاسخ خالی برگرداند؛ احتمالاً خطای احراز هویت یا خطای سرویس رخ داده است."
+            f"{suffix}"
         )
     try:
         # Some Dynamics installations return literal control characters inside
@@ -248,7 +273,11 @@ def _powershell_get_json(url: str, username: str = "", password: str = "") -> di
         # accepting those characters here preserves the Note content.
         payload = json.loads(raw_response, strict=False)
     except json.JSONDecodeError as exc:
-        raise CRMClientError("پاسخ CRM قابل خواندن نیست یا احراز هویت Windows موفق نبود.") from exc
+        preview = raw_response.strip().replace("\r", " ").replace("\n", " ")[:180]
+        raise CRMClientError(
+            "CRM پاسخ JSON معتبر برنگرداند؛ احتمالاً صفحه خطا، پاسخ احراز هویت یا خطای سرویس دریافت شده است."
+            f" پیش‌نمایش پاسخ: {preview}"
+        ) from exc
     if not isinstance(payload, dict):
         raise CRMClientError("ساختار پاسخ CRM معتبر نیست.")
     return payload
