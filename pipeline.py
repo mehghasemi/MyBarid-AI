@@ -126,6 +126,7 @@ def run_full_analysis(
     expert_filter: set[str] | None = None, unit: str = "case", force_ai: bool = False,
     cancel_check: Callable[[], None] | None = None,
     case_filter: set[str] | None = None,
+    suspicious_rules: dict | None = None,
 ) -> dict:
     def cb_wrap(label):
         def _cb(i, n, key):
@@ -157,7 +158,7 @@ def run_full_analysis(
             suspicious_pool = {k: v for k, v in dataset.cases.items() if primary_expert(v) in expert_filter}
         if case_filter:
             suspicious_pool = {k: v for k, v in suspicious_pool.items() if k in case_filter}
-    suspicious = find_suspicious_cases(suspicious_pool)
+    suspicious = find_suspicious_cases(suspicious_pool, suspicious_rules)
 
     return {
         "mode": "comparison",
@@ -180,6 +181,7 @@ def run_general_analysis(
     expert_filter: set[str] | None = None, unit: str = "case", force_ai: bool = False,
     cancel_check: Callable[[], None] | None = None,
     case_filter: set[str] | None = None,
+    suspicious_rules: dict | None = None,
 ) -> dict:
     """Analyze the current dataset as one independent population."""
     def progress(i, n, key):
@@ -254,7 +256,7 @@ def run_general_analysis(
     )
     if progress_cb:
         progress_cb("در حال بررسی موارد نیازمند بررسی", 0, len(suspicious_pool))
-    suspicious = find_suspicious_cases(suspicious_pool)
+    suspicious = find_suspicious_cases(suspicious_pool, suspicious_rules)
     if progress_cb:
         progress_cb("در حال بررسی موارد نیازمند بررسی", len(suspicious_pool), len(suspicious_pool))
     return {

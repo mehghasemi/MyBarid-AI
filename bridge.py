@@ -13,6 +13,7 @@ from pathlib import Path
 from ai.providers import AISettings
 from ai.analyzer import AnalysisCancelled, analyze_case, is_case_ai_analyzed, _case_signature
 from analysis.timeline import build_timeline
+from analysis.suspicious import normalized_rule_settings, SUSPICIOUS_RULE_INFO
 from config.criteria_config import Category, Criterion, CriteriaConfig, load_criteria_config, save_criteria_config
 import webview
 from data.loader import ExcelLoadError
@@ -84,6 +85,7 @@ class Api:
         self.dataset: Dataset | None = None
         self.config: CriteriaConfig = self._load_config()
         self.ai_settings: AISettings = self._load_ai_settings()
+        self.suspicious_rules = normalized_rule_settings(db.get_setting("suspicious_rules", {}))
         self.result: dict | None = None
         self.last_periods: tuple | None = None
         self.status = {"running": False, "done": False, "stage": "", "current": 0, "total": 0, "error": None}
@@ -642,6 +644,7 @@ class Api:
                 "export_version": self.SETTINGS_EXPORT_VERSION,
                 "criteria_config": self.config.to_dict(),
                 "expert_groups": db.get_setting("expert_groups", {}) or {},
+                "suspicious_rules": self.suspicious_rules,
                 "ai_settings": {  # عمداً بدون api_key (ریسک امنیتی انتقال کلید محرمانه بین سیستم‌ها)
                     "provider": self.ai_settings.provider, "model": self.ai_settings.model,
                     "base_url": self.ai_settings.base_url, "temperature": self.ai_settings.temperature,
@@ -695,6 +698,10 @@ class Api:
             current = db.get_setting("expert_groups", {}) or {}
             current.update(incoming_groups)
             db.set_setting("expert_groups", current)
+
+        if "suspicious_rules" in payload:
+            self.suspicious_rules = normalized_rule_settings(payload.get("suspicious_rules"))
+            db.set_setting("suspicious_rules", self.suspicious_rules)
 
         ai_payload = payload.get("ai_settings")
         if ai_payload:
@@ -953,12 +960,13 @@ class Api:
             result = (
                 run_general_analysis(
                     analysis_dataset, config, settings, progress_cb, expert_filter, unit,
-                    force_ai, cancel_check, selected_case_keys
+                    force_ai, cancel_check, selected_case_keys, self.suspicious_rules
                 )
                 if mode == "general" else
                 run_full_analysis(
                     analysis_dataset, config, period1, period2, settings, progress_cb,
-                    expert_filter, unit, force_ai, cancel_check, selected_case_keys
+                    expert_filter, unit, force_ai, cancel_check, selected_case_keys,
+                    self.suspicious_rules
                 )
             )
             with self._lock:
@@ -1438,6 +1446,19 @@ class Api:
         return {"ok": True, "rows": rows, "experts": experts, "reasons": reasons,
                 "services": services,
                 "unit": self.result.get("unit", "case")}
+
+    def get_suspicious_rules(self) -> dict:
+        return {
+            "rules": [
+                {"id": rule_id, **info, **self.suspicious_rules.get(rule_id, {})}
+                for rule_id, info in SUSPICIOUS_RULE_INFO.items()
+            ]
+        }
+
+    def save_suspicious_rules(self, rules: dict) -> dict:
+        self.suspicious_rules = normalized_rule_settings(rules or {})
+        db.set_setting("suspicious_rules", self.suspicious_rules)
+        return {"ok": True, "rules": self.get_suspicious_rules()["rules"]}
 
     def get_data_quality(self) -> dict:
         if not self.result:

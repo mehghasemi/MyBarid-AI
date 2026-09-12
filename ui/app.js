@@ -115,7 +115,7 @@ async function showPage(name) {
     suspicious: 'موارد نیازمند بررسی', 'data-quality': 'سلامت داده',
     'mgmt-report': 'گزارش مدیریتی', export: 'خروجی و گزارش‌ها',
     'expert-groups': 'گروه‌بندی کارشناسان', criteria: 'معیارها و وزن‌ها',
-    'ai-settings': 'تنظیمات AI',
+    'ai-settings': 'تنظیمات AI', 'suspicious-rules': 'قواعد موارد نیازمند بررسی',
   };
   const topbarTitle = document.getElementById('topbar-page-title');
   if (topbarTitle) topbarTitle.textContent = pageTitles[name] || name;
@@ -124,6 +124,7 @@ async function showPage(name) {
     ranking: loadRanking, cases: () => loadCasesTable(0), suspicious: loadSuspicious,
     'data-quality': loadDataQuality, 'mgmt-report': loadMgmtReport,
   };
+  if (name === 'suspicious-rules') await loadSuspiciousRules();
   if (loaders[name]) await loaders[name]();
 }
 
@@ -142,7 +143,7 @@ function applyNavigationLabels() {
     export: '⬇️ خروجی و گزارش‌ها',
     'expert-groups': '👥 گروه‌ها و تیم‌ها',
     criteria: '⚖️ معیارها و نحوه محاسبه',
-    'ai-settings': '🤖 تنظیمات AI',
+    'ai-settings': '🤖 تنظیمات AI', 'suspicious-rules': '🧭 قواعد موارد نیازمند بررسی',
   };
   document.querySelectorAll('.nav-item').forEach(el => {
     if (el.dataset.page === 'mgmt-report') {
@@ -1907,6 +1908,32 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text || '';
   return div.innerHTML;
+}
+
+async function loadSuspiciousRules() {
+  const res = await api().get_suspicious_rules();
+  const box = document.getElementById('suspicious-rules-list');
+  if (!box || !res?.rules) return;
+  box.innerHTML = res.rules.map(rule => `
+    <div class="card suspicious-rule-setting" data-rule-id="${escapeHtml(rule.id)}">
+      <label class="inline-check"><input type="checkbox" class="suspicious-rule-active" ${rule.active ? 'checked' : ''}> <b>${escapeHtml(rule.name_fa)}</b></label>
+      <div class="muted" style="margin:6px 0">${escapeHtml(rule.description_fa)} | دسته: ${escapeHtml(rule.category_fa)} | شدت: ${escapeHtml(rule.severity)}</div>
+      ${rule.threshold > 0 ? `<label class="field-label">آستانه <input type="number" class="suspicious-rule-threshold" min="0" value="${Number(rule.threshold)}"></label>` : ''}
+    </div>`).join('');
+}
+
+async function saveSuspiciousRules() {
+  const rules = {};
+  document.querySelectorAll('.suspicious-rule-setting').forEach(card => {
+    const id = card.dataset.ruleId;
+    rules[id] = {
+      active: card.querySelector('.suspicious-rule-active')?.checked || false,
+      threshold: Number(card.querySelector('.suspicious-rule-threshold')?.value || 0),
+    };
+  });
+  const res = await api().save_suspicious_rules(rules);
+  const box = document.getElementById('suspicious-rules-result');
+  if (box) box.innerHTML = res.ok ? '<div class="ok-box">قواعد موارد نیازمند بررسی ذخیره شد. برای اعمال روی داده‌ها تحلیل را دوباره اجرا کنید.</div>' : `<div class="err-box">${escapeHtml(res.error || 'ذخیره ناموفق بود')}</div>`;
 }
 
 /* ------------------------------------------------------------------------

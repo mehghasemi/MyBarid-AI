@@ -57,6 +57,7 @@
       <div class="nav-item" data-page="periods">🧭 آماده‌سازی و اجرای تحلیل</div>
       <div class="nav-item" data-page="expert-groups">👥 گروه‌بندی کارشناسان</div>
       <div class="nav-item" data-page="criteria">⚖️ معیارها و وزن‌ها</div>
+      <div class="nav-item" data-page="suspicious-rules">🧭 قواعد موارد نیازمند بررسی</div>
       <div class="nav-item" data-page="ai-settings">🤖 تنظیمات AI</div>
     </div>
     <div class="module-menu" data-module-menu="project-management">
@@ -616,6 +617,17 @@
           </div>
         </div>
       </div>
+    </section>
+
+    <section class="page" id="page-suspicious-rules">
+      <h1 class="page-title">قواعد موارد نیازمند بررسی</h1>
+      <p class="page-sub">دلایل علامت‌گذاری Caseها را بر اساس نیاز خود فعال یا غیرفعال کنید. تغییر این قواعد روی تحلیل‌های بعدی اعمال می‌شود.</p>
+      <div id="suspicious-rules-list"></div>
+      <div style="margin-top:14px">
+        <button class="btn primary" onclick="saveSuspiciousRules()">ذخیره قواعد</button>
+        <button class="btn" onclick="loadSuspiciousRules()">بازخوانی تنظیمات</button>
+      </div>
+      <div id="suspicious-rules-result" style="margin-top:12px"></div>
     </section>
 
     <!-- ======================================================= Suspicious -->
