@@ -113,4 +113,4 @@ AI اختیاری است. نبود شواهد معتبر باید به N/A من�
 
 احراز هویت با Windows account جاری انجام می‌شود. View شخصی `TESTNOTE` با FetchXML خوانده می‌شود و داده به `Dataset` داخلی تبدیل می‌گردد. هیچ عملیات Create، Update یا Delete روی CRM در این فاز وجود ندارد.
 
-آخرین Snapshot دریافتی در جدول `crm_snapshots` از فایل `app.db` ذخیره می‌شود و هنگام شروع برنامه قابل بازیابی است. این Snapshot فقط Noteها و Caseهای مرتبط View فعلی را شامل می‌شود؛ دریافت Taskها در مرحله بعد اضافه خواهد شد.
+آخرین Snapshot دریافتی در جدول `crm_snapshots` از فایل `app.db` ذخیره می‌شود و هنگام شروع برنامه قابل بازیابی است. Snapshot شامل Noteها، Taskها و Caseهای مرتبط View فعلی است. دریافت‌های بعدی با Watermark مستقل برای Case، Note و Task انجام می‌شوند؛ جزئیات در `docs/crm-sync-architecture.md` ثبت شده است.
