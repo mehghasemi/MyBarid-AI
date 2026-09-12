@@ -2032,15 +2032,72 @@ function escapeHtml(text) {
 async function loadAnalysisRules() {
   const res = await api().get_analysis_rules(), box = document.getElementById('analysis-rules-list');
   if (!box || !res || !res.rules) return;
-  const r = res.rules, labels = {problem:'واژه‌های مشکل',action:'واژه‌های اقدام',result:'واژه‌های نتیجه',l2:'واژه‌های ارجاع به لایه دوم'};
+  const r = res.rules;
+  const labels = {problem:'واژه‌های بیان مشکل',action:'واژه‌های اقدام و پیگیری',result:'واژه‌های نتیجه و رفع مشکل',l2:'واژه‌های ارجاع به سطح تخصصی‌تر'};
+  const thresholdLabels = {
+    notes_clarity_very_short: 'حداقل طول بسیار کوتاه Note (تعداد نویسه)',
+    notes_clarity_short: 'مرز Note کوتاه و کم‌جزئیات (تعداد نویسه)',
+    notes_clarity_good: 'مرز Note دارای جزئیات کافی (تعداد نویسه)',
+    notes_writing_very_short_words: 'حداقل تعداد واژه برای Note بسیار کوتاه',
+    notes_writing_short_words: 'مرز Note کم‌جزئیات (تعداد واژه)',
+    notes_writing_good_words: 'مرز Note دارای ساختار مناسب (تعداد واژه)',
+    first_response_fast_hours: 'پاسخ اولیه سریع‌تر از این مقدار (ساعت)',
+    first_response_normal_hours: 'پایان بازه پاسخ عادی (ساعت)',
+    first_response_late_hours: 'پایان بازه پاسخ با تأخیر (ساعت)',
+    followup_on_time_days: 'پیگیری به‌موقع تا این تعداد روز',
+    followup_delayed_days: 'پیگیری تأخیردار بعد از این تعداد روز',
+    due_date_grace_hours: 'مهلت ارفاقی موعد Task (ساعت)',
+    scenario_min_chars: 'حداقل طول سناریو (تعداد نویسه)',
+    open_event_gap_days: 'فاصله هشدار بین رویدادهای Case باز (روز)',
+    closed_event_gap_days: 'فاصله هشدار بین رویدادهای Case بسته (روز)',
+    data_health_event_gap_days: 'حداکثر فاصله قابل‌قبول بین رویدادها (روز)',
+  };
+  const thresholdHelp = {
+    notes_clarity_very_short: 'اگر میانگین طول Note از این عدد کمتر باشد، Note بسیار کوتاه تلقی می‌شود.',
+    notes_clarity_short: 'از این مرز برای تشخیص Note کوتاه و کم‌جزئیات استفاده می‌شود.',
+    notes_clarity_good: 'رسیدن به این مقدار یعنی متن Note از نظر طول، جزئیات کافی دارد.',
+    notes_writing_very_short_words: 'تعداد واژه کمتر از این مقدار، متن بسیار مختصر محسوب می‌شود.',
+    notes_writing_short_words: 'زیر این مقدار، ساختار متن Note محدود تلقی می‌شود.',
+    notes_writing_good_words: 'رسیدن به این مقدار نشانه ساختار و جزئیات مناسب متن است.',
+    first_response_fast_hours: 'پاسخ اولیه در این بازه، سریع ارزیابی می‌شود.',
+    first_response_normal_hours: 'پاسخ تا این زمان در محدوده عادی قرار می‌گیرد.',
+    first_response_late_hours: 'پاسخ تا این زمان با تأخیر ارزیابی می‌شود؛ بیشتر از آن تأخیر قابل‌توجه است.',
+    followup_on_time_days: 'حداکثر فاصله زمانی برای پیگیری به‌موقع.',
+    followup_delayed_days: 'بعد از این تعداد روز، پیگیری تأخیردار محسوب می‌شود.',
+    due_date_grace_hours: 'زمان مجاز بعد از موعد Task برای بررسی تأخیر.',
+    scenario_min_chars: 'سناریوی کوتاه‌تر از این مقدار ناقص در نظر گرفته می‌شود.',
+    open_event_gap_days: 'فاصله بیشتر از این مقدار در Case باز، هشدار سلامت ایجاد می‌کند.',
+    closed_event_gap_days: 'فاصله بیشتر از این مقدار در Case بسته، هشدار سلامت ایجاد می‌کند.',
+    data_health_event_gap_days: 'فاصله بیشتر از این مقدار بین رویدادها غیرعادی در نظر گرفته می‌شود.',
+  };
+  const healthLabels = {
+    notes_without_description: 'Noteهای بدون متن',
+    tasks_without_description: 'Taskهای بدون توضیح',
+    cases_without_note: 'موارد بدون Note',
+    cases_without_task: 'موارد بدون Task',
+    duplicate_notes: 'Noteهای تکراری',
+    duplicate_tasks: 'Taskهای تکراری',
+    unmatched_tasks: 'Taskهای بدون مورد مرتبط',
+    unreasonable_timestamps: 'فاصله‌های زمانی غیرمنطقی',
+  };
+  const healthHelp = {
+    notes_without_description: 'بررسی می‌کند Note متن قابل استفاده داشته باشد.',
+    tasks_without_description: 'بررسی می‌کند Task توضیح یا شرح اقدام داشته باشد.',
+    cases_without_note: 'مواردی را پیدا می‌کند که هیچ Note ثبت‌شده‌ای ندارند.',
+    cases_without_task: 'مواردی را پیدا می‌کند که هیچ Task ثبت‌شده‌ای ندارند؛ نبود Task به‌تنهایی الزاماً خطا نیست.',
+    duplicate_notes: 'Noteهایی را که برای یک مورد، متن تکراری دارند شناسایی می‌کند.',
+    duplicate_tasks: 'Taskهایی را که متن تکراری دارند شناسایی می‌کند.',
+    unmatched_tasks: 'Taskهایی را پیدا می‌کند که به هیچ موردی متصل نشده‌اند.',
+    unreasonable_timestamps: 'فاصله زمانی غیرعادی بین رویدادهای یک مورد را بررسی می‌کند.',
+  };
   let html = '<div class="card"><h3>واژه‌های تشخیص متن</h3>';
   Object.keys(r.keywords || {}).forEach(function(k) {
     html += '<label class="field-label">' + escapeHtml(labels[k] || k) + '</label><textarea class="analysis-rule-values" data-key="' + escapeHtml(k) + '" rows="2">' + escapeHtml((r.keywords[k] || []).join('، ')) + '</textarea>';
   });
   html += '</div><div class="card"><h3>آستانه‌های عددی</h3><div class="grid cols-3">';
-  Object.keys(r.thresholds || {}).forEach(function(k) { html += '<label class="field-label">' + escapeHtml(k) + '<input type="number" class="analysis-threshold-value" data-key="' + escapeHtml(k) + '" value="' + Number(r.thresholds[k]) + '"></label>'; });
+  Object.keys(r.thresholds || {}).forEach(function(k) { html += '<label class="field-label" title="' + escapeHtml(thresholdHelp[k] || '') + '">' + escapeHtml(thresholdLabels[k] || 'تنظیم عددی') + '<input type="number" class="analysis-threshold-value" data-key="' + escapeHtml(k) + '" value="' + Number(r.thresholds[k]) + '"><small class="muted">' + escapeHtml(thresholdHelp[k] || '') + '</small></label>'; });
   html += '</div></div><div class="card"><h3>بررسی‌های سلامت داده</h3>';
-  Object.keys(r.data_health || {}).forEach(function(k) { html += '<label class="inline-check"><input type="checkbox" class="analysis-health-setting" data-key="' + escapeHtml(k) + '" ' + (r.data_health[k] ? 'checked' : '') + '> ' + escapeHtml(k) + '</label> '; });
+  Object.keys(r.data_health || {}).forEach(function(k) { html += '<label class="inline-check" title="' + escapeHtml(healthHelp[k] || '') + '"><input type="checkbox" class="analysis-health-setting" data-key="' + escapeHtml(k) + '" ' + (r.data_health[k] ? 'checked' : '') + '> ' + escapeHtml(healthLabels[k] || 'بررسی سلامت داده') + '</label> '; });
   box.innerHTML = html + '</div>';
 }
 async function saveAnalysisRules() {
