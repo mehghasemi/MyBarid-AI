@@ -201,7 +201,7 @@ async function refreshCrmTroubleshoot() {
       <div class="crm-debug-detail">${escapeHtml(status.progress_detail || status.error || 'جزئیات بیشتری ثبت نشده است.')}</div>`;
     const events = Array.isArray(status.events) ? status.events : [];
     eventsBox.innerHTML = events.length
-      ? events.slice().reverse().map(event => `<div class="crm-debug-event ${event.level === 'error' ? 'error' : ''}"><time>${escapeHtml(event.at || '')}</time><span>${escapeHtml(event.message || '')}</span></div>`).join('')
+      ? events.slice().reverse().map(event => `<div class="crm-debug-event ${event.level === 'error' ? 'error' : ''}"><time>${escapeHtml(toShamsiStr(event.at || ''))}</time><span>${escapeHtml(event.message || '')}</span></div>`).join('')
       : '<div class="muted-box">هنوز رویدادی ثبت نشده است.</div>';
   } catch (error) {
     summary.textContent = `خطا در دریافت لاگ عیب‌یابی: ${error.message || error}`;

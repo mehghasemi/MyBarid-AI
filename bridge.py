@@ -328,10 +328,15 @@ class Api:
                     "progress_completed": 0, "progress_total": 0, "progress_detail": "",
                 })
             result = self._perform_crm_sync(payload)
-            self._crm_log_event("فرآیند دریافت و ذخیره‌سازی پایان یافت.")
+            if isinstance(result, dict) and result.get("ok") is False:
+                self._crm_log_event(f"همگام‌سازی ناموفق: {result.get('error') or 'خطای نامشخص'}", "error")
+            else:
+                self._crm_log_event("فرآیند دریافت و ذخیره‌سازی پایان یافت.")
             with self._lock:
                 self._crm_sync_status.update({
-                    "running": False, "done": True, "error": None,
+                    "running": False,
+                    "done": not (isinstance(result, dict) and result.get("ok") is False),
+                    "error": result.get("error") if isinstance(result, dict) and result.get("ok") is False else None,
                     "stage": "دریافت اطلاعات کامل شد", "result": result,
                     "elapsed_seconds": int(
                         time.time() - (self._crm_sync_status.get("started_at") or time.time())

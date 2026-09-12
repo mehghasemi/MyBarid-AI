@@ -9,6 +9,7 @@ import json
 import hashlib
 import os
 import subprocess
+import time
 from datetime import datetime
 from xml.etree import ElementTree
 from urllib.parse import quote
@@ -352,8 +353,10 @@ class DynamicsCRMClient:
             if progress_callback:
                 progress_callback(stage, completed, total, detail)
 
-        progress("در حال یافتن View انتخاب‌شده از CRM...")
+        view_started = time.perf_counter()
+        progress("در حال یافتن View انتخاب‌شده از CRM...", 0, 0, "درخواست شناسایی View ارسال شد")
         view = self._get_user_view()
+        progress("View شناسایی شد", 0, 0, f"زمان پاسخ: {time.perf_counter() - view_started:.1f} ثانیه؛ نوع: {view.get('returnedtypecode')}")
         fetchxml = view.get("fetchxml")
         if not fetchxml:
             raise CRMClientError("View فاقد FetchXML قابل اجرا است.")
@@ -363,9 +366,11 @@ class DynamicsCRMClient:
             raise CRMClientError("Unsupported CRM View entity type.")
         query_fetchxml = _add_modified_since_filter(fetchxml, since) if since else fetchxml
         url = f"{self.api_root}/{entity_set}?fetchXml={quote(query_fetchxml, safe='')}"
-        progress("در حال دریافت صفحه اول View...")
+        page_started = time.perf_counter()
+        progress("در حال دریافت صفحه اول View...", 0, 0, "درخواست FetchXML ارسال شد")
         payload = _powershell_get_json(url, self.username, self.password)
         rows = list(payload.get("value") or [])
+        progress("صفحه اول View دریافت شد", 0, 0, f"زمان پاسخ: {time.perf_counter() - page_started:.1f} ثانیه؛ {len(rows):,} رکورد")
         # Dataverse may paginate FetchXML results. The first response can
         # contain only a small page even when the selected View has many more
         # records. Follow the server-provided continuation link.
