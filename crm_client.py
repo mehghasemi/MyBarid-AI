@@ -33,6 +33,7 @@ CRM_PROCESS_TIMEOUT_SECONDS = CRM_REQUEST_TIMEOUT_SECONDS + 30
 DEFAULT_ORGANIZATION = "Main"
 DEFAULT_API_VERSION = "v9.1"
 DEFAULT_VIEW_NAME = "داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر"
+ACTIVITY_CASE_BATCH_SIZE = 200
 
 
 def _iso(value):
@@ -320,6 +321,44 @@ def _build_related_activity_fetchxml(
     return ElementTree.tostring(new_root, encoding="unicode", short_empty_elements=True)
 
 
+def _build_activity_case_ids_fetchxml(
+    activity_entity: str,
+    case_ids: list[str],
+    since: datetime | None = None,
+) -> str:
+    """Build one bounded activity query for a batch of Case ids.
+
+    This is used for Note Views. The previous implementation made one HTTP
+    request per Case, which made full syncs unnecessarily slow.
+    """
+    if activity_entity == "annotation":
+        attributes = ("annotationid", "notetext", "createdon", "modifiedon", "modifiedby", "objectid")
+        regarding_attribute = "objectid"
+    elif activity_entity == "task":
+        attributes = ("activityid", "subject", "description", "createdon", "modifiedon", "actualstart", "scheduledend", "statuscode", "ownerid", "regardingobjectid")
+        regarding_attribute = "regardingobjectid"
+    else:
+        raise CRMClientError(f"موجودیت فعالیت پشتیبانی نمی‌شود: {activity_entity}")
+    root = ElementTree.Element("fetch", {"distinct": "true"})
+    entity = ElementTree.SubElement(root, "entity", {"name": activity_entity})
+    for name in attributes:
+        ElementTree.SubElement(entity, "attribute", {"name": name})
+    filters = ElementTree.SubElement(entity, "filter", {"type": "and"})
+    in_condition = ElementTree.SubElement(filters, "condition", {
+        "attribute": regarding_attribute,
+        "operator": "in",
+    })
+    for case_id in case_ids:
+        ElementTree.SubElement(in_condition, "value").text = str(case_id)
+    if since:
+        ElementTree.SubElement(filters, "condition", {
+            "attribute": "modifiedon",
+            "operator": "gt",
+            "value": since.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        })
+    return ElementTree.tostring(root, encoding="unicode", short_empty_elements=True)
+
+
 class DynamicsCRMClient:
     def __init__(
         self,
@@ -460,30 +499,42 @@ class DynamicsCRMClient:
             }
             expanded_tasks: list[dict] = []
             related_case_ids = sorted(case_ids) if include_related_activities else []
-            for index, case_id in enumerate(related_case_ids, start=1):
-                progress("در حال دریافت Note و Taskهای وابسته...", index - 1,
-                         len(related_case_ids), f"مورد {index - 1} از {len(related_case_ids)}")
-                note_url = (
-                    f"{self.api_root}/annotations?"
-                    f"$filter=_objectid_value%20eq%20{case_id}"
-                    f"&$select=annotationid,notetext,createdon,modifiedon,modifiedby,"
-                    f"_objectid_value"
+            batches = [
+                related_case_ids[i:i + ACTIVITY_CASE_BATCH_SIZE]
+                for i in range(0, len(related_case_ids), ACTIVITY_CASE_BATCH_SIZE)
+            ]
+            total_requests = len(batches) * 2
+            completed_requests = 0
+            activity_since_value = activity_since or since
+            for batch_index, case_batch in enumerate(batches, start=1):
+                note_fetchxml = _build_activity_case_ids_fetchxml(
+                    "annotation", case_batch, activity_since_value
                 )
+                note_url = f"{self.api_root}/annotations?fetchXml={quote(note_fetchxml, safe='')}"
                 for note_row in _paged_values(note_url, self.username, self.password):
+                    case_id = _row_guid(note_row, "_objectid_value", "objectid")
                     note_id = str(_value(note_row, "annotationid") or "").casefold()
-                    if note_id and note_id not in note_ids:
-                        expanded_notes.append({**case_context[case_id], **note_row, "_objectid_value": case_id})
+                    if case_id and note_id and note_id not in note_ids:
+                        expanded_notes.append({**case_context.get(case_id, {}), **note_row, "_objectid_value": case_id})
                         note_ids.add(note_id)
-                task_url = (
-                    f"{self.api_root}/tasks?"
-                    f"$filter=_regardingobjectid_value%20eq%20{case_id}"
-                    f"&$select=activityid,subject,description,createdon,actualstart,"
-                    f"scheduledend,statuscode,ownerid,_regardingobjectid_value"
+                completed_requests += 1
+                progress("دریافت گروهی Noteهای وابسته...", completed_requests,
+                         total_requests, f"بسته {batch_index} از {len(batches)}")
+
+                task_fetchxml = _build_activity_case_ids_fetchxml(
+                    "task", case_batch, activity_since_value
                 )
+                task_url = f"{self.api_root}/tasks?fetchXml={quote(task_fetchxml, safe='')}"
+                task_ids = {str(_value(row, "activityid", "taskid") or "").casefold() for row in expanded_tasks}
                 for task_row in _paged_values(task_url, self.username, self.password):
-                    expanded_tasks.append({**case_context[case_id], **task_row, "_regardingobjectid_value": case_id})
-                progress("در حال دریافت Note و Taskهای وابسته...", index,
-                         len(related_case_ids), f"مورد {index} از {len(related_case_ids)}")
+                    case_id = _row_guid(task_row, "_regardingobjectid_value", "regardingobjectid")
+                    task_id = str(_value(task_row, "activityid", "taskid") or "").casefold()
+                    if case_id and task_id and task_id not in task_ids:
+                        expanded_tasks.append({**case_context.get(case_id, {}), **task_row, "_regardingobjectid_value": case_id})
+                        task_ids.add(task_id)
+                completed_requests += 1
+                progress("دریافت گروهی Taskهای وابسته...", completed_requests,
+                         total_requests, f"بسته {batch_index} از {len(batches)}")
 
         rows = expanded_notes
         notes: list[NoteRecord] = []

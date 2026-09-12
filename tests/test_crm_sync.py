@@ -5,6 +5,7 @@ from crm_client import (
     DynamicsCRMClient,
     _add_modified_since_filter,
     _build_related_activity_fetchxml,
+    _build_activity_case_ids_fetchxml,
     dataset_from_payload,
 )
 from database import db
@@ -35,6 +36,18 @@ def test_related_activity_fetch_can_use_independent_watermark():
     assert 'entity name="annotation"' in updated
     assert 'attribute="modifiedon"' in updated
     assert 'value="2026-08-29T10:30:00Z"' in updated
+
+
+def test_activity_case_batch_query_uses_in_filter():
+    updated = _build_activity_case_ids_fetchxml(
+        "annotation",
+        ["case-1", "case-2"],
+        datetime(2026, 8, 29, 10, 30, 0),
+    )
+    assert 'operator="in"' in updated
+    assert '<value>case-1</value>' in updated
+    assert '<value>case-2</value>' in updated
+    assert 'attribute="modifiedon"' in updated
 
 
 def test_crm_snapshot_round_trip_keeps_note_count():
