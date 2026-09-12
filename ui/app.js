@@ -162,6 +162,7 @@ async function showPage(name) {
     'mgmt-report': 'گزارش مدیریتی', export: 'خروجی و گزارش‌ها',
     'expert-groups': 'گروه‌بندی کارشناسان', criteria: 'معیارها و وزن‌ها',
     'ai-settings': 'تنظیمات AI', 'analysis-rules': 'قواعد تحلیل و سلامت داده', 'suspicious-rules': 'قواعد موارد نیازمند بررسی',
+    'crm-troubleshoot': 'عیب‌یابی اتصال CRM',
   };
   const topbarTitle = document.getElementById('topbar-page-title');
   if (topbarTitle) topbarTitle.textContent = pageTitles[name] || name;
@@ -173,6 +174,38 @@ async function showPage(name) {
   if (name === 'analysis-rules') await loadAnalysisRules();
   if (name === 'suspicious-rules') await loadSuspiciousRules();
   if (loaders[name]) await loaders[name]();
+}
+
+let crmDebugTimer = null;
+
+async function openCrmTroubleshoot() {
+  await showPage('crm-troubleshoot');
+  if (crmDebugTimer) clearInterval(crmDebugTimer);
+  await refreshCrmTroubleshoot();
+  crmDebugTimer = setInterval(refreshCrmTroubleshoot, 1000);
+}
+
+async function refreshCrmTroubleshoot() {
+  const summary = document.getElementById('crm-debug-summary');
+  const eventsBox = document.getElementById('crm-debug-events');
+  if (!summary || !eventsBox) return;
+  try {
+    const status = await api().get_crm_sync_status();
+    const elapsed = Number(status.elapsed_seconds || 0);
+    const mode = status.sync_mode === 'incremental' ? 'افزایشی' : 'کامل';
+    const counts = status.progress_total
+      ? `پیشرفت: ${status.progress_completed || 0} از ${status.progress_total}`
+      : 'تعداد کل هنوز از CRM دریافت نشده است';
+    summary.innerHTML = `<div><strong>${escapeHtml(status.stage || 'هنوز همگام‌سازی شروع نشده است')}</strong></div>
+      <div class="crm-debug-grid"><span>وضعیت: ${status.running ? 'در حال اجرا' : (status.done ? 'پایان‌یافته' : 'متوقف/ناموفق')}</span><span>نوع: ${mode}</span><span>زمان: ${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}</span><span>${counts}</span></div>
+      <div class="crm-debug-detail">${escapeHtml(status.progress_detail || status.error || 'جزئیات بیشتری ثبت نشده است.')}</div>`;
+    const events = Array.isArray(status.events) ? status.events : [];
+    eventsBox.innerHTML = events.length
+      ? events.slice().reverse().map(event => `<div class="crm-debug-event ${event.level === 'error' ? 'error' : ''}"><time>${escapeHtml(event.at || '')}</time><span>${escapeHtml(event.message || '')}</span></div>`).join('')
+      : '<div class="muted-box">هنوز رویدادی ثبت نشده است.</div>';
+  } catch (error) {
+    summary.textContent = `خطا در دریافت لاگ عیب‌یابی: ${error.message || error}`;
+  }
 }
 
 function applyNavigationLabels() {

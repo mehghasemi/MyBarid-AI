@@ -214,6 +214,7 @@
         <div class="crm-actions">
           <button class="btn" id="crm-load-views" onclick="loadCrmViews()">دریافت فهرست Viewها</button>
           <button class="btn" onclick="testCrmConnection()">آزمون اتصال</button>
+          <button class="btn" onclick="openCrmTroubleshoot()">عیب‌یابی CRM</button>
           <button class="btn primary" onclick="syncCrmView()">دریافت و به‌روزرسانی داده</button>
         </div>
         <div class="crm-options">
@@ -240,6 +241,22 @@
         </div>
       </div>
       <div id="upload-result" style="margin-top:20px"></div>
+    </section>
+
+    <section class="page" id="page-crm-troubleshoot">
+      <h1 class="page-title">عیب‌یابی موقت اتصال CRM</h1>
+      <p class="page-sub">این صفحه فقط برای مشاهده‌ی دقیق مراحل پشت‌صحنه ساخته شده است و هیچ تغییری در CRM ایجاد نمی‌کند.</p>
+      <div class="card crm-debug-card">
+        <div class="section-heading-row">
+          <div>
+            <h3>وضعیت زنده همگام‌سازی</h3>
+            <p class="page-sub">زمان، مرحله، نوع همگام‌سازی و نتیجه‌ی هر درخواست در اینجا ثبت می‌شود.</p>
+          </div>
+          <button class="btn" onclick="showPage('upload')">بازگشت به اتصال CRM</button>
+        </div>
+        <div id="crm-debug-summary" class="muted-box">در حال دریافت وضعیت...</div>
+        <div id="crm-debug-events" class="crm-debug-events"></div>
+      </div>
     </section>
 
     <!-- =========================================================== Periods -->

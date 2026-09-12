@@ -97,7 +97,7 @@ class Api:
         self._crm_sync_status = {
             "running": False, "done": False, "error": None,
             "stage": "", "result": None, "started_at": None,
-            "elapsed_seconds": 0,
+            "elapsed_seconds": 0, "events": [], "last_event_at": None,
         }
         self._lock = threading.Lock()
         # Restore the latest local CRM snapshot only. This is deliberately
@@ -291,6 +291,7 @@ class Api:
                 "running": True, "done": False, "error": None,
                 "stage": "در حال اتصال به CRM...", "result": None,
                 "started_at": time.time(), "elapsed_seconds": 0,
+                "events": [], "last_event_at": None,
             }
         thread = threading.Thread(
             target=self._sync_crm_view_worker,
@@ -298,7 +299,16 @@ class Api:
             daemon=True,
         )
         thread.start()
+        self._crm_log_event("درخواست همگام‌سازی ثبت شد.")
         return {"ok": True, "started": True}
+
+    def _crm_log_event(self, message: str, level: str = "info") -> None:
+        with self._lock:
+            now = datetime.now().isoformat(timespec="seconds")
+            events = self._crm_sync_status.setdefault("events", [])
+            events.append({"at": now, "level": level, "message": str(message)})
+            self._crm_sync_status["events"] = events[-80:]
+            self._crm_sync_status["last_event_at"] = now
 
     def get_crm_sync_status(self) -> dict:
         with self._lock:
@@ -311,12 +321,14 @@ class Api:
 
     def _sync_crm_view_worker(self, payload: dict) -> None:
         try:
+            self._crm_log_event("Worker همگام‌سازی CRM شروع شد.")
             with self._lock:
                 self._crm_sync_status.update({
                     "stage": "در حال دریافت View از CRM...", "progress": 0,
                     "progress_completed": 0, "progress_total": 0, "progress_detail": "",
                 })
             result = self._perform_crm_sync(payload)
+            self._crm_log_event("فرآیند دریافت و ذخیره‌سازی پایان یافت.")
             with self._lock:
                 self._crm_sync_status.update({
                     "running": False, "done": True, "error": None,
@@ -327,6 +339,7 @@ class Api:
                 })
         except Exception as exc:  # noqa: BLE001
             traceback.print_exc()
+            self._crm_log_event(f"خطای پیش‌بینی‌نشده: {exc}", "error")
             with self._lock:
                 self._crm_sync_status.update({
                     "running": False, "done": False,
@@ -340,6 +353,7 @@ class Api:
     def _perform_crm_sync(self, payload: dict) -> dict:
         payload = payload or {}
         settings = self.save_crm_settings(payload)
+        self._crm_log_event(f"View انتخاب‌شده: {settings.get('view_name')}")
         client = DynamicsCRMClient(**self._crm_client_settings(settings, payload))
         previous = db.get_latest_crm_snapshot()
         previous_meta = (previous or {}).get("metadata") or {}
@@ -363,14 +377,19 @@ class Api:
                 "progress_detail": "بررسی View و زمان آخرین دریافت",
             })
         def report_progress(stage, completed=0, total=0, detail=""):
+            event_message = stage + (f" — {detail}" if detail else "")
             with self._lock:
+                previous_message = self._crm_sync_status.get("last_progress_message")
                 self._crm_sync_status.update({
                     "stage": stage,
                     "progress": round((completed / total) * 100) if total else 0,
                     "progress_completed": completed,
                     "progress_total": total,
                     "progress_detail": detail,
+                    "last_progress_message": event_message,
                 })
+            if event_message != previous_message:
+                self._crm_log_event(event_message)
         try:
             dataset, metadata = client.fetch_view_dataset(
                 since=since,
@@ -378,6 +397,7 @@ class Api:
                 progress_callback=report_progress,
             )
         except CRMClientError as exc:
+            self._crm_log_event(f"خطای CRM: {exc}", "error")
             return {"ok": False, "error": str(exc)}
         previous_notes = {
             str(row.get("note_id")): row for row in
