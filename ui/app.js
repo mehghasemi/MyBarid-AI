@@ -745,6 +745,11 @@ async function syncCrmView() {
     }, 1000);
   };
   try {
+    renderCrmProgress({
+      running: true, stage: 'در حال آماده‌سازی دریافت از CRM...',
+      progress: 4, progress_completed: 0, progress_total: 0,
+      elapsed_seconds: 0, progress_detail: 'در حال اتصال و ارسال درخواست به CRM'
+    });
     startElapsedTimer();
     const payload = crmPayload();
     payload.include_related_activities = Boolean(document.getElementById('crm-related-activities')?.checked);
@@ -773,9 +778,15 @@ async function syncCrmView() {
       state.analysisDone = false;
       document.getElementById('dataset-status').textContent =
         `${res.total_cases.toLocaleString('fa-IR')} مورد | داده CRM بارگذاری شد`;
-      box.textContent = `دریافت ${res.sync_mode === 'incremental' ? 'تغییرات' : 'کامل'} موفق: ${res.total_notes} Note و ${res.total_cases} مورد. ` +
-        `رکورد جدید/تغییریافته: ${res.new_or_changed_notes || 0}، بدون تغییر: ${res.unchanged_notes || 0}، حذف‌شده: ${res.deleted_notes || 0}. ` +
-        res.warning;
+      const changed = Number(res.new_or_changed_notes || 0);
+      const deleted = Number(res.deleted_notes || 0);
+      const unchanged = Number(res.unchanged_notes || 0);
+      const changeMessage = changed || deleted
+        ? 'تغییر شناسایی شد: ' + changed + ' رکورد جدید/تغیریافته و ' + deleted + ' رکورد حذف‌شده.'
+        : 'در این نوبت تغییر جدیدی در View پیدا نشد؛ همان Snapshot قبلی حفظ شد.';
+      box.innerHTML = '<div class="ok-box">دریافت ' + (res.sync_mode === 'incremental' ? 'تغییرات' : 'کامل') + ' موفق بود.</div>' +
+        '<div class="crm-progress-meta">' + res.total_notes + ' Note و ' + res.total_cases + ' مورد | ' + changeMessage + '</div>' +
+        '<div class="crm-progress-meta">بدون تغییر: ' + unchanged + ' | ' + escapeHtml(res.warning || '') + '</div>';
       await initializeCaseSelection();
       const analysis = await api().get_analysis_info();
       state.analysisDone = !!analysis?.loaded && !analysis?.stale;

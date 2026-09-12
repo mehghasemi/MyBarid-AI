@@ -1128,3 +1128,6 @@ tbody tr:nth-child(even):hover { background: #f8faff; }
 .crm-options { display:flex; flex-wrap:wrap; gap:14px; margin-top:12px; }
 .crm-local-status-grid { margin-top:16px; }
 .compact-steps { margin:0; padding-right:22px; line-height:2.2; color:var(--muted); font-size:13px; }
+
+.crm-progress > div { min-width: 4%; background: linear-gradient(90deg, var(--accent), #60a5fa, var(--accent)); background-size: 200% 100%; animation: crm-progress-pulse 1.4s linear infinite; }
+@keyframes crm-progress-pulse { from { background-position: 0 0; } to { background-position: 200% 0; } }

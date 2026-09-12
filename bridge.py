@@ -377,15 +377,30 @@ class Api:
             previous_payload.get("notes", [])
             if row.get("note_id")
         }
+        previous_tasks = {
+            str(row.get("task_id")): row for row in
+            previous_payload.get("tasks", [])
+            if row.get("task_id")
+        }
         fetched_payload = dataset_to_payload(dataset)
         fetched_notes = {
             str(row.get("note_id")): row for row in fetched_payload.get("notes", [])
             if row.get("note_id")
         }
+        fetched_tasks = {
+            str(row.get("task_id")): row for row in
+            fetched_payload.get("tasks", [])
+            if row.get("task_id")
+        }
         if incremental:
             merged_notes = dict(previous_notes)
             merged_notes.update(fetched_notes)
-            current_payload = {"notes": list(merged_notes.values()), "tasks": []}
+            merged_tasks = dict(previous_tasks)
+            merged_tasks.update(fetched_tasks)
+            current_payload = {
+                "notes": list(merged_notes.values()),
+                "tasks": list(merged_tasks.values()),
+            }
             dataset = dataset_from_payload(current_payload)
         else:
             current_payload = fetched_payload
