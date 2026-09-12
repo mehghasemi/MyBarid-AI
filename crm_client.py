@@ -253,6 +253,32 @@ def _powershell_get_json(url: str, username: str = "", password: str = "") -> di
     return payload
 
 
+def _build_related_activity_fetchxml(case_fetchxml: str, activity_entity: str) -> str:
+    """Build one batched activity query from the selected Case View."""
+    root = ElementTree.fromstring(case_fetchxml)
+    case_entity = root.find("./entity")
+    if case_entity is None or case_entity.get("name") != "incident":
+        raise CRMClientError("FetchXML View موردها ساختار قابل استفاده‌ای ندارد.")
+    new_root = ElementTree.Element(
+        "fetch", {k: v for k, v in root.attrib.items() if k not in {"page", "paging-cookie"}}
+    )
+    new_root.set("distinct", "true")
+    activity = ElementTree.SubElement(new_root, "entity", {"name": activity_entity})
+    if activity_entity == "annotation":
+        attributes = ("annotationid", "notetext", "createdon", "modifiedon", "modifiedby", "objectid")
+        to_attribute = "objectid"
+    else:
+        attributes = ("activityid", "subject", "description", "createdon", "actualstart", "scheduledend", "statuscode", "ownerid", "regardingobjectid")
+        to_attribute = "regardingobjectid"
+    for name in attributes:
+        ElementTree.SubElement(activity, "attribute", {"name": name})
+    link = ElementTree.fromstring(ElementTree.tostring(case_entity, encoding="unicode"))
+    link.tag = "link-entity"
+    link.attrib = {"name": "incident", "from": "incidentid", "to": to_attribute, "alias": "ac"}
+    activity.append(link)
+    return ElementTree.tostring(new_root, encoding="unicode", short_empty_elements=True)
+
+
 class DynamicsCRMClient:
     def __init__(
         self,
@@ -353,59 +379,60 @@ class DynamicsCRMClient:
             page_count += 1
         progress("دریافت View انجام شد", page_count, page_count, f"{len(rows):,} رکورد")
 
-        # The selected View may contain only a subset of Notes for a Case.
-        # Expand every Case found by the View to all related Notes and Tasks;
-        # this expansion is intentionally independent of the selected date
-        # range and is deduplicated by the CRM record id.
+        # A Case View can contain thousands of cases. Fetch related activities
+        # in two batched requests instead of two requests per case.
         case_context: dict[str, dict] = {}
         case_ids: set[str] = set()
         for row in rows:
-            case_id = _row_guid(
-                row, "_objectid_value", "ac.incidentid", "incidentid", "objectid"
-            )
+            case_id = _row_guid(row, "_objectid_value", "ac.incidentid", "incidentid", "objectid")
             if case_id:
                 case_ids.add(case_id)
                 case_context.setdefault(case_id, row)
 
-        expanded_notes = [] if returned_type == "incident" else list(rows)
-        note_ids = {
-            str(_value(row, "annotationid") or "").casefold()
-            for row in expanded_notes
-            if _value(row, "annotationid")
-        }
-        expanded_tasks: list[dict] = []
-        related_case_ids = sorted(case_ids) if (include_related_activities or returned_type == "incident") else []
-        for index, case_id in enumerate(related_case_ids, start=1):
-            progress("در حال دریافت Note و Taskهای وابسته...", index - 1,
-                     len(related_case_ids), f"مورد {index - 1} از {len(related_case_ids)}")
-            note_url = (
-                f"{self.api_root}/annotations?"
-                f"$filter=_objectid_value%20eq%20{case_id}"
-                f"&$select=annotationid,notetext,createdon,modifiedon,modifiedby,"
-                f"_objectid_value"
-            )
-            for note_row in _paged_values(note_url, self.username, self.password):
-                note_id = str(_value(note_row, "annotationid") or "").casefold()
-                if note_id and note_id not in note_ids:
-                    expanded_notes.append({
-                        **case_context[case_id], **note_row,
-                        "_objectid_value": case_id,
-                    })
-                    note_ids.add(note_id)
-
-            task_url = (
-                f"{self.api_root}/tasks?"
-                f"$filter=_regardingobjectid_value%20eq%20{case_id}"
-                f"&$select=activityid,subject,description,createdon,actualstart,"
-                f"scheduledend,statuscode,ownerid,_regardingobjectid_value"
-            )
-            for task_row in _paged_values(task_url, self.username, self.password):
-                expanded_tasks.append({
-                    **case_context[case_id], **task_row,
-                    "_regardingobjectid_value": case_id,
-                })
-            progress("در حال دریافت Note و Taskهای وابسته...", index,
-                     len(related_case_ids), f"مورد {index} از {len(related_case_ids)}")
+        if returned_type == "incident":
+            progress("در حال دریافت Noteهای مرتبط با موردها...", 0, 2, "یک درخواست گروهی")
+            note_fetchxml = _build_related_activity_fetchxml(query_fetchxml, "annotation")
+            note_url = f"{self.api_root}/annotations?fetchXml={quote(note_fetchxml, safe='')}"
+            expanded_notes = _paged_values(note_url, self.username, self.password)
+            progress("دریافت Noteهای مرتبط انجام شد", 1, 2, f"{len(expanded_notes):,} Note")
+            progress("در حال دریافت Taskهای مرتبط با موردها...", 1, 2, "یک درخواست گروهی")
+            task_fetchxml = _build_related_activity_fetchxml(query_fetchxml, "task")
+            task_url = f"{self.api_root}/tasks?fetchXml={quote(task_fetchxml, safe='')}"
+            expanded_tasks = _paged_values(task_url, self.username, self.password)
+            progress("دریافت Taskهای مرتبط انجام شد", 2, 2, f"{len(expanded_tasks):,} Task")
+        else:
+            expanded_notes = list(rows)
+            note_ids = {
+                str(_value(row, "annotationid") or "").casefold()
+                for row in expanded_notes
+                if _value(row, "annotationid")
+            }
+            expanded_tasks: list[dict] = []
+            related_case_ids = sorted(case_ids) if include_related_activities else []
+            for index, case_id in enumerate(related_case_ids, start=1):
+                progress("در حال دریافت Note و Taskهای وابسته...", index - 1,
+                         len(related_case_ids), f"مورد {index - 1} از {len(related_case_ids)}")
+                note_url = (
+                    f"{self.api_root}/annotations?"
+                    f"$filter=_objectid_value%20eq%20{case_id}"
+                    f"&$select=annotationid,notetext,createdon,modifiedon,modifiedby,"
+                    f"_objectid_value"
+                )
+                for note_row in _paged_values(note_url, self.username, self.password):
+                    note_id = str(_value(note_row, "annotationid") or "").casefold()
+                    if note_id and note_id not in note_ids:
+                        expanded_notes.append({**case_context[case_id], **note_row, "_objectid_value": case_id})
+                        note_ids.add(note_id)
+                task_url = (
+                    f"{self.api_root}/tasks?"
+                    f"$filter=_regardingobjectid_value%20eq%20{case_id}"
+                    f"&$select=activityid,subject,description,createdon,actualstart,"
+                    f"scheduledend,statuscode,ownerid,_regardingobjectid_value"
+                )
+                for task_row in _paged_values(task_url, self.username, self.password):
+                    expanded_tasks.append({**case_context[case_id], **task_row, "_regardingobjectid_value": case_id})
+                progress("در حال دریافت Note و Taskهای وابسته...", index,
+                         len(related_case_ids), f"مورد {index} از {len(related_case_ids)}")
 
         rows = expanded_notes
         notes: list[NoteRecord] = []
