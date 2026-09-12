@@ -16,12 +16,13 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from data.cleaner import CaseBundle
+from analysis.rule_settings import DEFAULT_ANALYSIS_RULES
 
 PORTAL_AUTHORS = {"portal portal", "پرتال", "customer portal"}
 
-PROBLEM_KEYWORDS = ["مشکل", "خطا", "ایراد", "قطع", "کند", "مسدود", "خرابی", "عدم", "امکان لاگین"]
-ACTION_KEYWORDS = ["بررسی", "اقدام", "تماس گرفته شد", "انجام شد", "پیگیری", "تنظیم", "نصب", "اصلاح", "ریست", "تغییر"]
-RESULT_KEYWORDS = ["حل شد", "رفع شد", "برطرف شد", "نتیجه", "تست شد", "تایید شد", "کار می‌کند", "مشکل برطرف"]
+PROBLEM_KEYWORDS = DEFAULT_ANALYSIS_RULES["keywords"]["problem"]
+ACTION_KEYWORDS = DEFAULT_ANALYSIS_RULES["keywords"]["action"]
+RESULT_KEYWORDS = DEFAULT_ANALYSIS_RULES["keywords"]["result"]
 
 
 @dataclass
@@ -43,16 +44,28 @@ def _contains_any(text: str, keywords: list[str]) -> bool:
     return any(kw.casefold() in low for kw in keywords)
 
 
+def _rule_settings(settings: dict | None) -> dict:
+    return settings or DEFAULT_ANALYSIS_RULES
+
+
+def _keywords(settings: dict | None, key: str, fallback: list[str]) -> list[str]:
+    return list((_rule_settings(settings).get("keywords") or {}).get(key) or fallback)
+
+
+def _thresholds(settings: dict | None) -> dict:
+    return (_rule_settings(settings).get("thresholds") or {})
+
+
 # ---------------------------------------------------------------- Notes ----
 
-def notes_completeness(case: CaseBundle) -> RuleResult:
+def notes_completeness(case: CaseBundle, settings: dict | None = None) -> RuleResult:
     text = _staff_text(case)
     if not text:
         return RuleResult(0.0, "هیچ Note کارشناسی با متن ثبت نشده است.")
     hits = [
-        ("مشکل", _contains_any(text, PROBLEM_KEYWORDS)),
-        ("اقدام", _contains_any(text, ACTION_KEYWORDS)),
-        ("نتیجه", _contains_any(text, RESULT_KEYWORDS)),
+        ("مشکل", _contains_any(text, _keywords(settings, "problem", PROBLEM_KEYWORDS))),
+        ("اقدام", _contains_any(text, _keywords(settings, "action", ACTION_KEYWORDS))),
+        ("نتیجه", _contains_any(text, _keywords(settings, "result", RESULT_KEYWORDS))),
     ]
     count = sum(1 for _, ok in hits if ok)
     score = round(count / 3 * 100)
@@ -62,34 +75,40 @@ def notes_completeness(case: CaseBundle) -> RuleResult:
     return RuleResult(score, evidence)
 
 
-def notes_clarity(case: CaseBundle) -> RuleResult:
+def notes_clarity(case: CaseBundle, settings: dict | None = None) -> RuleResult:
     notes = _staff_notes(case)
     lengths = [len((n.description or "").strip()) for n in notes]
     if not lengths:
         return RuleResult(None, "Note کارشناسی برای ارزیابی وجود ندارد.")
     avg_len = sum(lengths) / len(lengths)
-    if avg_len < 20:
+    t = _thresholds(settings)
+    short = t.get("notes_clarity_very_short", 20)
+    good = t.get("notes_clarity_short", 50)
+    detailed = t.get("notes_clarity_good", 150)
+    if avg_len < short:
         score, note = 20, "میانگین طول متن Noteها بسیار کوتاه است."
-    elif avg_len < 50:
+    elif avg_len < good:
         score, note = 50, "متن Noteها کوتاه و کم‌جزئیات است."
-    elif avg_len < 150:
+    elif avg_len < detailed:
         score, note = 78, "متن Noteها در حد قابل قبول توضیح دارد."
     else:
         score, note = 100, "متن Noteها با جزئیات کافی ثبت شده است."
     return RuleResult(score, f"{note} (میانگین {round(avg_len)} کاراکتر)")
 
 
-def notes_result_recorded(case: CaseBundle) -> RuleResult:
+def notes_result_recorded(case: CaseBundle, settings: dict | None = None) -> RuleResult:
     notes = _staff_notes(case)
     if not notes:
         return RuleResult(None, "Note کارشناسی وجود ندارد.")
     text = _staff_text(case)
     lifecycle = (case.status or "").strip().casefold()
-    if lifecycle in {"resolved", "closed"} and not _contains_any(text, RESULT_KEYWORDS):
-        if _contains_any(text, ACTION_KEYWORDS):
+    result_words = _keywords(settings, "result", RESULT_KEYWORDS)
+    action_words = _keywords(settings, "action", ACTION_KEYWORDS)
+    if lifecycle in {"resolved", "closed"} and not _contains_any(text, result_words):
+        if _contains_any(text, action_words):
             return RuleResult(20.0, "Action is recorded, but the actual result or impact is not recorded.")
         return RuleResult(0.0, "Case is closed, but the actual action result is not recorded.")
-    if _contains_any(text, RESULT_KEYWORDS):
+    if _contains_any(text, result_words):
         return RuleResult(100.0, "عبارتی دال بر ثبت نتیجه اقدام یافت شد.")
     if (case.status or "").strip().casefold() in {"resolved", "closed"}:
         return RuleResult(40.0, "وضعیت Case بسته/حل‌شده است اما نتیجه اقدام صراحتاً در متن ثبت نشده.")
@@ -114,33 +133,34 @@ def notes_no_duplication(case: CaseBundle) -> RuleResult:
     return RuleResult(score, evidence)
 
 
-def notes_writing_quality(case: CaseBundle) -> RuleResult:
+def notes_writing_quality(case: CaseBundle, settings: dict | None = None) -> RuleResult:
     notes = _staff_notes(case)
     if not notes:
         return RuleResult(None, "Note کارشناسی وجود ندارد.")
     word_counts = [len((n.description or "").split()) for n in notes]
     avg_words = sum(word_counts) / len(word_counts)
-    if avg_words < 3:
+    t = _thresholds(settings)
+    very_short = t.get("notes_writing_very_short_words", 3)
+    short = t.get("notes_writing_short_words", 8)
+    good = t.get("notes_writing_good_words", 20)
+    if avg_words < very_short:
         return RuleResult(20.0, "متن Noteها عمدتاً تک‌کلمه‌ای/بسیار مختصر است.")
-    if avg_words < 8:
+    if avg_words < short:
         return RuleResult(55.0, "متن Noteها ساختار محدودی دارد.")
-    if avg_words < 20:
+    if avg_words < good:
         return RuleResult(80.0, "متن Noteها ساختار قابل قبولی دارد.")
     return RuleResult(95.0, "متن Noteها دارای ساختار و جزئیات کافی است.")
 
 
 # ---------------------------------------------------------------- Tasks ----
 
-def task_presence_when_needed(case: CaseBundle) -> RuleResult:
+def task_presence_when_needed(case: CaseBundle, settings: dict | None = None) -> RuleResult:
     # A Task is required only when the source explicitly indicates an L2
     # hand-off. Note count, or task absence itself, is not evidence.
     explicit_text = " ".join(filter(None, [
         case.scenario, case.case_description, case.status_reason, _staff_text(case),
     ])).casefold()
-    l2_markers = (
-        "l2", "level 2", "second level", "tier 2",
-        "لایه دو", "لایه ۲", "سطح دو", "سطح ۲", "ارجاع به لایه",
-    )
+    l2_markers = _keywords(settings, "l2", DEFAULT_ANALYSIS_RULES["keywords"]["l2"])
     if not any(marker.casefold() in explicit_text for marker in l2_markers):
         return RuleResult(None, "N/A / Insufficient Evidence: داده معتبر برای الزام ارجاع به لایه دو یا ایجاد Task وجود ندارد.")
     if case.tasks:
@@ -175,13 +195,13 @@ def task_description_quality(case: CaseBundle) -> RuleResult:
     return RuleResult(score, evidence)
 
 
-def task_result_recorded(case: CaseBundle) -> RuleResult:
+def task_result_recorded(case: CaseBundle, settings: dict | None = None) -> RuleResult:
     if not case.tasks:
         return RuleResult(None, "Task‌ای برای ارزیابی وجود ندارد.")
     texts = [(t.description or "") for t in case.tasks]
     joined = "\n".join(texts)
     completed = [t for t in case.tasks if (t.status_reason or "").strip().casefold() in {"completed", "closed"}]
-    if _contains_any(joined, RESULT_KEYWORDS):
+    if _contains_any(joined, _keywords(settings, "result", RESULT_KEYWORDS)):
         return RuleResult(100.0, "نتیجه اقدام در متن Task ثبت شده است.")
     if completed:
         return RuleResult(45.0, "Task با وضعیت تکمیل‌شده ثبت شده اما نتیجه به‌صراحت در متن نیامده است.")
@@ -190,7 +210,7 @@ def task_result_recorded(case: CaseBundle) -> RuleResult:
 
 # ------------------------------------------------------------ Timing -----
 
-def first_response_time(case: CaseBundle) -> RuleResult:
+def first_response_time(case: CaseBundle, settings: dict | None = None) -> RuleResult:
     anchor = case.created_on or (min((n.note_date for n in case.notes if n.note_date), default=None))
     staff_set = set(id(n) for n in _staff_notes(case))
     staff_events = [(kind, when, obj) for kind, when, obj in case.all_events_sorted
@@ -201,18 +221,22 @@ def first_response_time(case: CaseBundle) -> RuleResult:
     delta_hours = (first_when - anchor).total_seconds() / 3600
     if delta_hours < 0:
         return RuleResult(None, "ترتیب زمانی نامعتبر است (اولین اقدام قبل از ایجاد Case ثبت شده).")
-    if delta_hours <= 4:
+    t = _thresholds(settings)
+    fast = t.get("first_response_fast_hours", 4)
+    normal = t.get("first_response_normal_hours", 24)
+    late = t.get("first_response_late_hours", 72)
+    if delta_hours <= fast:
         score, note = 100, "اولین اقدام کارشناسی ظرف ۴ ساعت انجام شده."
-    elif delta_hours <= 24:
+    elif delta_hours <= normal:
         score, note = 80, "اولین اقدام کارشناسی ظرف یک روز کاری انجام شده."
-    elif delta_hours <= 72:
+    elif delta_hours <= late:
         score, note = 55, "اولین اقدام کارشناسی با تأخیر (تا ۳ روز) انجام شده."
     else:
         score, note = 25, "اولین اقدام کارشناسی با تأخیر قابل‌توجه (بیش از ۳ روز) انجام شده."
     return RuleResult(score, f"{note} ({round(delta_hours,1)} ساعت فاصله)")
 
 
-def followup_delay(case: CaseBundle) -> RuleResult:
+def followup_delay(case: CaseBundle, settings: dict | None = None) -> RuleResult:
     pending = [t for t in case.tasks if (t.follow_up_needed or "").strip().casefold() == "yes" and t.next_follow_up]
     if not pending:
         return RuleResult(None, "Task دارای Follow-up برنامه‌ریزی‌شده برای این Case وجود ندارد.")
@@ -224,9 +248,12 @@ def followup_delay(case: CaseBundle) -> RuleResult:
             penalties.append(0)
             continue
         gap_days = (later[0] - t.next_follow_up).total_seconds() / 86400
-        if gap_days <= 1:
+        t = _thresholds(settings)
+        on_time = t.get("followup_on_time_days", 1)
+        delayed = t.get("followup_delayed_days", 3)
+        if gap_days <= on_time:
             penalties.append(100)
-        elif gap_days <= 3:
+        elif gap_days <= delayed:
             penalties.append(65)
         else:
             penalties.append(25)
@@ -235,7 +262,7 @@ def followup_delay(case: CaseBundle) -> RuleResult:
     return RuleResult(score, evidence)
 
 
-def due_date_compliance(case: CaseBundle) -> RuleResult:
+def due_date_compliance(case: CaseBundle, settings: dict | None = None) -> RuleResult:
     with_due = [t for t in case.tasks if t.due_date]
     if not with_due:
         return RuleResult(None, "Task دارای Due Date برای این Case وجود ندارد.")
@@ -247,7 +274,7 @@ def due_date_compliance(case: CaseBundle) -> RuleResult:
         gap_hours = (finish - t.due_date).total_seconds() / 3600
         if gap_hours <= 0:
             scores.append(100)
-        elif gap_hours <= 24:
+        elif gap_hours <= _thresholds(settings).get("due_date_grace_hours", 24):
             scores.append(70)
         else:
             scores.append(30)
@@ -257,7 +284,7 @@ def due_date_compliance(case: CaseBundle) -> RuleResult:
     return RuleResult(score, f"میانگین رعایت Due Date برای {len(scores)} Task: {score} از ۱۰۰.")
 
 
-def unusual_time_gap(case: CaseBundle) -> RuleResult:
+def unusual_time_gap(case: CaseBundle, settings: dict | None = None) -> RuleResult:
     events = [when for _, when, _ in case.all_events_sorted if when]
     if len(events) < 2:
         return RuleResult(None, "برای بررسی فاصله زمانی حداقل دو رویداد لازم است.")
@@ -265,7 +292,8 @@ def unusual_time_gap(case: CaseBundle) -> RuleResult:
     gaps_days = [(events[i + 1] - events[i]).total_seconds() / 86400 for i in range(len(events) - 1)]
     max_gap = max(gaps_days)
     is_open = (case.status or "").strip().casefold() not in {"resolved", "closed", "cancelled"}
-    threshold = 14 if is_open else 30
+    t = _thresholds(settings)
+    threshold = t.get("open_event_gap_days", 14) if is_open else t.get("closed_event_gap_days", 30)
     if max_gap <= threshold / 2:
         return RuleResult(100.0, f"بیشترین فاصله بین رویدادها {round(max_gap,1)} روز است.")
     if max_gap <= threshold:
@@ -277,7 +305,7 @@ def unusual_time_gap(case: CaseBundle) -> RuleResult:
 
 # --------------------------------------------------------- Scenario -----
 
-def scenario_recorded(case: CaseBundle) -> RuleResult:
+def scenario_recorded(case: CaseBundle, settings: dict | None = None) -> RuleResult:
     """کیفیت ثبت فیلد Scenario (سناریوی وقوع مشکل). این فیلد را کارشناس
     هنگام ثبت/مدیریت Case وارد می‌کند و طبق تعریف Rule-Based زیر ارزیابی
     می‌شود (نه با قضاوت سلیقه‌ای):
@@ -289,9 +317,9 @@ def scenario_recorded(case: CaseBundle) -> RuleResult:
     text = (case.scenario or "").strip()
     if not text:
         return RuleResult(0.0, "فیلد Scenario برای این Case خالی است.")
-    if len(text) < 15:
+    if len(text) < _thresholds(settings).get("scenario_min_chars", 15):
         return RuleResult(30.0, f"فیلد Scenario بسیار کوتاه است ({len(text)} کاراکتر).")
-    if _contains_any(text, PROBLEM_KEYWORDS):
+    if _contains_any(text, _keywords(settings, "problem", PROBLEM_KEYWORDS)):
         return RuleResult(100.0, "فیلد Scenario شامل توضیح مرتبط با مشکل گزارش‌شده است.")
     return RuleResult(70.0, f"فیلد Scenario ثبت شده است ({len(text)} کاراکتر) ولی اشاره مستقیمی به مشکل در آن یافت نشد.")
 
@@ -305,7 +333,7 @@ def timeline_reconstructable(case: CaseBundle) -> RuleResult:
     return RuleResult(95.0, f"{len(events)} رویداد به‌ترتیب زمانی قابل بازسازی است.")
 
 
-def final_status_clear(case: CaseBundle) -> RuleResult:
+def final_status_clear(case: CaseBundle, settings: dict | None = None) -> RuleResult:
     events = case.all_events_sorted
     if not events:
         return RuleResult(None, "رویداد دارای تاریخ برای تعیین وضعیت نهایی وجود ندارد.")
@@ -313,9 +341,9 @@ def final_status_clear(case: CaseBundle) -> RuleResult:
     text = (last_obj.description or "") if last_kind == "note" else (last_obj.description or last_obj.subject or "")
     status_known = bool((case.status or "").strip())
     all_staff_text = _staff_text(case)
-    if (case.status or "").strip().casefold() in {"resolved", "closed"} and not _contains_any(all_staff_text, RESULT_KEYWORDS):
+    if (case.status or "").strip().casefold() in {"resolved", "closed"} and not _contains_any(all_staff_text, _keywords(settings, "result", RESULT_KEYWORDS)):
         return RuleResult(20.0, "Case is closed, but the actual result is not documented in the staff note; Status alone is insufficient.")
-    if _contains_any(text, RESULT_KEYWORDS) and status_known:
+    if _contains_any(text, _keywords(settings, "result", RESULT_KEYWORDS)) and status_known:
         return RuleResult(100.0, "وضعیت نهایی هم در فیلد Status و هم در متن آخرین رویداد مشخص است.")
     if status_known:
         return RuleResult(60.0, "فیلد Status مقداردهی شده اما متن آخرین رویداد نتیجه صریحی ندارد.")

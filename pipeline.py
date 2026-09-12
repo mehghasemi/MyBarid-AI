@@ -83,9 +83,9 @@ def filter_period_task_mode(
 
 
 def score_all(cases: dict[str, CaseBundle], config: CriteriaConfig,
-              ai_results: dict[str, dict] | None = None, unit: str = "case") -> dict[str, CaseScoreBreakdown]:
+              ai_results: dict[str, dict] | None = None, unit: str = "case", rule_settings: dict | None = None) -> dict[str, CaseScoreBreakdown]:
     ai_results = ai_results or {}
-    return {key: score_case(case, config, ai_results.get(key), unit=unit) for key, case in cases.items()}
+    return {key: score_case(case, config, ai_results.get(key), unit=unit, rule_settings=rule_settings) for key, case in cases.items()}
 
 
 @dataclass
@@ -101,6 +101,7 @@ def run_period(
     expert_filter: set[str] | None = None, unit: str = "case", force_ai: bool = False,
     cancel_check: Callable[[], None] | None = None,
     case_filter: set[str] | None = None,
+    rule_settings: dict | None = None,
 ) -> PeriodResult:
     if unit == "task":
         cases = filter_period_task_mode(dataset, start, end, expert_filter)
@@ -113,7 +114,7 @@ def run_period(
         cases, config, ai_settings, progress_cb, force=force_ai, cancel_check=cancel_check)
     if progress_cb:
         progress_cb("محاسبه امتیازهای Rule-Based", 0, len(cases))
-    scores = score_all(cases, config, ai_results, unit=unit)
+    scores = score_all(cases, config, ai_results, unit=unit, rule_settings=rule_settings)
     if progress_cb:
         progress_cb("محاسبه امتیازهای Rule-Based", len(cases), len(cases))
     return PeriodResult(cases=cases, scores=scores, ai_errors=ai_errors)
@@ -127,6 +128,7 @@ def run_full_analysis(
     cancel_check: Callable[[], None] | None = None,
     case_filter: set[str] | None = None,
     suspicious_rules: dict | None = None,
+    rule_settings: dict | None = None,
 ) -> dict:
     def cb_wrap(label):
         def _cb(i, n, key):
@@ -134,8 +136,8 @@ def run_full_analysis(
                 progress_cb(label, i, n)
         return _cb
 
-    r1 = run_period(dataset, config, period1[0], period1[1], ai_settings, cb_wrap("دوره اول"), expert_filter, unit, force_ai, cancel_check, case_filter)
-    r2 = run_period(dataset, config, period2[0], period2[1], ai_settings, cb_wrap("دوره دوم"), expert_filter, unit, force_ai, cancel_check, case_filter)
+    r1 = run_period(dataset, config, period1[0], period1[1], ai_settings, cb_wrap("دوره اول"), expert_filter, unit, force_ai, cancel_check, case_filter, rule_settings)
+    r2 = run_period(dataset, config, period2[0], period2[1], ai_settings, cb_wrap("دوره دوم"), expert_filter, unit, force_ai, cancel_check, case_filter, rule_settings)
 
     comparison = compare_periods(r1.cases, r1.scores, r2.cases, r2.scores, config)
 
@@ -144,7 +146,7 @@ def run_full_analysis(
     ranking = rank_experts(experts_p1, experts_p2)
 
     health_checks, health_index = compute_data_health(
-        dataset.notes, dataset.tasks, dataset.cases, dataset.unmatched_tasks
+        dataset.notes, dataset.tasks, dataset.cases, dataset.unmatched_tasks, rule_settings
     )
 
     if unit == "task":
@@ -182,6 +184,7 @@ def run_general_analysis(
     cancel_check: Callable[[], None] | None = None,
     case_filter: set[str] | None = None,
     suspicious_rules: dict | None = None,
+    rule_settings: dict | None = None,
 ) -> dict:
     """Analyze the current dataset as one independent population."""
     def progress(i, n, key):
@@ -204,7 +207,7 @@ def run_general_analysis(
     )
     if progress_cb:
         progress_cb("محاسبه امتیازهای Rule-Based", 0, len(cases))
-    scores = score_all(cases, config, ai_results, unit=unit)
+    scores = score_all(cases, config, ai_results, unit=unit, rule_settings=rule_settings)
     if progress_cb:
         progress_cb("محاسبه امتیازهای Rule-Based", len(cases), len(cases))
     general = PeriodResult(cases=cases, scores=scores, ai_errors=ai_errors)
@@ -244,7 +247,7 @@ def run_general_analysis(
     if progress_cb:
         progress_cb("محاسبه سلامت داده انتخاب‌شده", 0, 1)
     health_checks, health_index = compute_data_health(
-        scoped_notes, scoped_tasks, cases, scoped_unmatched
+        scoped_notes, scoped_tasks, cases, scoped_unmatched, rule_settings
     )
     if progress_cb:
         progress_cb("محاسبه سلامت داده انتخاب‌شده", 1, 1)

@@ -57,6 +57,7 @@
       <div class="nav-item" data-page="periods">🧭 آماده‌سازی و اجرای تحلیل</div>
       <div class="nav-item" data-page="expert-groups">👥 گروه‌بندی کارشناسان</div>
       <div class="nav-item" data-page="criteria">⚖️ معیارها و وزن‌ها</div>
+      <div class="nav-item" data-page="analysis-rules">⚙️ قواعد تحلیل و سلامت داده</div>
       <div class="nav-item" data-page="suspicious-rules">🧭 قواعد موارد نیازمند بررسی</div>
       <div class="nav-item" data-page="ai-settings">🤖 تنظیمات AI</div>
     </div>
@@ -617,6 +618,14 @@
           </div>
         </div>
       </div>
+    </section>
+
+    <section class="page" id="page-analysis-rules">
+      <h1 class="page-title">قواعد تحلیل و سلامت داده</h1>
+      <p class="page-sub">قواعد و آستانه‌های اثرگذار بر خروجی Rule-Based و شاخص سلامت داده را انتخاب و تنظیم کنید.</p>
+      <div id="analysis-rules-list"></div>
+      <div style="margin-top:14px"><button class="btn primary" onclick="saveAnalysisRules()">ذخیره قواعد</button><button class="btn" onclick="loadAnalysisRules()">بازخوانی تنظیمات</button></div>
+      <div id="analysis-rules-result" style="margin-top:12px"></div>
     </section>
 
     <section class="page" id="page-suspicious-rules">

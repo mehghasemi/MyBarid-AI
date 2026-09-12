@@ -115,7 +115,7 @@ async function showPage(name) {
     suspicious: 'موارد نیازمند بررسی', 'data-quality': 'سلامت داده',
     'mgmt-report': 'گزارش مدیریتی', export: 'خروجی و گزارش‌ها',
     'expert-groups': 'گروه‌بندی کارشناسان', criteria: 'معیارها و وزن‌ها',
-    'ai-settings': 'تنظیمات AI', 'suspicious-rules': 'قواعد موارد نیازمند بررسی',
+    'ai-settings': 'تنظیمات AI', 'analysis-rules': 'قواعد تحلیل و سلامت داده', 'suspicious-rules': 'قواعد موارد نیازمند بررسی',
   };
   const topbarTitle = document.getElementById('topbar-page-title');
   if (topbarTitle) topbarTitle.textContent = pageTitles[name] || name;
@@ -124,6 +124,7 @@ async function showPage(name) {
     ranking: loadRanking, cases: () => loadCasesTable(0), suspicious: loadSuspicious,
     'data-quality': loadDataQuality, 'mgmt-report': loadMgmtReport,
   };
+  if (name === 'analysis-rules') await loadAnalysisRules();
   if (name === 'suspicious-rules') await loadSuspiciousRules();
   if (loaders[name]) await loaders[name]();
 }
@@ -1910,6 +1911,29 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+
+async function loadAnalysisRules() {
+  const res = await api().get_analysis_rules(), box = document.getElementById('analysis-rules-list');
+  if (!box || !res || !res.rules) return;
+  const r = res.rules, labels = {problem:'واژه‌های مشکل',action:'واژه‌های اقدام',result:'واژه‌های نتیجه',l2:'واژه‌های ارجاع به لایه دوم'};
+  let html = '<div class="card"><h3>واژه‌های تشخیص متن</h3>';
+  Object.keys(r.keywords || {}).forEach(function(k) {
+    html += '<label class="field-label">' + escapeHtml(labels[k] || k) + '</label><textarea class="analysis-rule-values" data-key="' + escapeHtml(k) + '" rows="2">' + escapeHtml((r.keywords[k] || []).join('، ')) + '</textarea>';
+  });
+  html += '</div><div class="card"><h3>آستانه‌های عددی</h3><div class="grid cols-3">';
+  Object.keys(r.thresholds || {}).forEach(function(k) { html += '<label class="field-label">' + escapeHtml(k) + '<input type="number" class="analysis-threshold-value" data-key="' + escapeHtml(k) + '" value="' + Number(r.thresholds[k]) + '"></label>'; });
+  html += '</div></div><div class="card"><h3>بررسی‌های سلامت داده</h3>';
+  Object.keys(r.data_health || {}).forEach(function(k) { html += '<label class="inline-check"><input type="checkbox" class="analysis-health-setting" data-key="' + escapeHtml(k) + '" ' + (r.data_health[k] ? 'checked' : '') + '> ' + escapeHtml(k) + '</label> '; });
+  box.innerHTML = html + '</div>';
+}
+async function saveAnalysisRules() {
+  const rules = {keywords:{}, thresholds:{}, data_health:{}};
+  document.querySelectorAll('.analysis-rule-values').forEach(function(el) { rules.keywords[el.dataset.key] = el.value.split(/[،,\n]/).map(function(v){return v.trim();}).filter(Boolean); });
+  document.querySelectorAll('.analysis-threshold-value').forEach(function(el) { rules.thresholds[el.dataset.key] = Number(el.value || 0); });
+  document.querySelectorAll('.analysis-health-setting').forEach(function(el) { rules.data_health[el.dataset.key] = !!el.checked; });
+  const res = await api().save_analysis_rules(rules), box = document.getElementById('analysis-rules-result');
+  if (box) box.innerHTML = res.ok ? '<div class="ok-box">قواعد تحلیل ذخیره شد و از تحلیل بعدی اعمال می‌شود.</div>' : '<div class="err-box">' + escapeHtml(res.error || 'ذخیره ناموفق بود') + '</div>';
+}
 async function loadSuspiciousRules() {
   const res = await api().get_suspicious_rules();
   const box = document.getElementById('suspicious-rules-list');

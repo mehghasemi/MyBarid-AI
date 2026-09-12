@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import inspect
 from typing import Any
 
 from analysis.rules import RULE_FUNCTIONS
@@ -42,6 +43,10 @@ class CaseScoreBreakdown:
     lifecycle_status: str | None = None
 
 
+def _call_rule(fn, case, rule_settings):
+    return fn(case, rule_settings) if len(inspect.signature(fn).parameters) > 1 else fn(case)
+
+
 def _weighted_avg(pairs: list[tuple[float, float]]) -> float | None:
     total_weight = sum(weight for _, weight in pairs)
     if total_weight <= 0:
@@ -76,6 +81,7 @@ def score_case(
     config: CriteriaConfig,
     ai_scores: dict[str, tuple[float | None, str]] | None = None,
     unit: str = "case",
+    rule_settings: dict | None = None,
 ) -> CaseScoreBreakdown:
     """Score with N/A-aware re-weighting while preserving the legacy API."""
     ai_scores = ai_scores or {}
@@ -114,7 +120,7 @@ def score_case(
         if criterion.evaluation_type == "RULE":
             fn = RULE_FUNCTIONS.get(criterion.id)
             if fn:
-                result = fn(case)
+                result = _call_rule(fn, case, rule_settings)
                 score, evidence = result.score, result.evidence
             else:
                 na_reason = f"Rule '{criterion.id}' تعریف نشده است."
@@ -129,7 +135,7 @@ def score_case(
                 evidence = na_reason
         elif criterion.evaluation_type == "HYBRID":
             fn = RULE_FUNCTIONS.get(criterion.id)
-            rule_result = fn(case) if fn else None
+            rule_result = _call_rule(fn, case, rule_settings) if fn else None
             ai_part, ai_evidence = ai_scores.get(criterion.id, (None, ""))
             parts = [value for value in (rule_result.score if rule_result else None, ai_part)
                      if value is not None]
