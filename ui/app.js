@@ -27,11 +27,14 @@ const state = {
 };
 
 function api() {
-  if (window.pywebview && window.pywebview.api) return window.pywebview.api;
+  // In desktop mode never fall back to the HTTP API while pywebview is still
+  // initializing. The fallback caused file:// requests to /api/call and the
+  // misleading "Backend JSON" error during startup.
+  if (window.pywebview) return window.pywebview.api || null;
   return window.webAppApi;
 }
 
-if (!window.pywebview) {
+if (typeof window.pywebview === 'undefined') {
   window.webAppApi = new Proxy({}, {
     get(_target, method) {
       return (...args) => fetch('/api/call', {
@@ -2246,6 +2249,7 @@ async function exportExpertReport() {
 ------------------------------------------------------------------------ */
 let appInitialized = false;
 function apiMethodsReady() {
+  if (window.pywebview && !window.pywebview.api) return false;
   const bridge = api();
   return !!(bridge && typeof bridge.get_criteria === 'function' && typeof bridge.get_ai_settings === 'function');
 }
