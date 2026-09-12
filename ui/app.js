@@ -668,6 +668,11 @@ async function syncCrmView() {
     const seconds = Math.floor((Date.now() - startedAt) / 1000);
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   };
+  const formatBackendElapsed = (status) => {
+    const seconds = Number.isFinite(status.elapsed_seconds)
+      ? status.elapsed_seconds : Math.floor((Date.now() - startedAt) / 1000);
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  };
   const renderCrmProgress = (status) => {
     const percent = Number.isFinite(status.progress) && status.progress > 0 ? status.progress : 8;
     const detail = status.progress_detail ? ` — ${status.progress_detail}` : '';
@@ -676,7 +681,7 @@ async function syncCrmView() {
       : 'آخرین به‌روزرسانی ذخیره‌شده: هنوز ثبت نشده است';
     box.innerHTML = `<div>${escapeHtml(status.stage || 'در حال دریافت داده از CRM...')}${escapeHtml(detail)}</div>
       <div class="progress-bar crm-progress"><div style="width:${Math.min(100, percent)}%"></div></div>
-      <div class="crm-progress-meta">زمان سپری‌شده: <span id="crm-elapsed-time">${formatElapsed()}</span>${status.progress_total ? ` | پیشرفت: ${status.progress_completed} از ${status.progress_total}` : ' | تعداد کل هنوز از CRM اعلام نشده است'}</div>
+      <div class="crm-progress-meta">زمان سپری‌شده: <span id="crm-elapsed-time">${formatBackendElapsed(status)}</span>${status.progress_total ? ` | پیشرفت: ${status.progress_completed} از ${status.progress_total}` : ' | تعداد کل هنوز از CRM اعلام نشده است'}</div>
       <div class="crm-progress-meta">${escapeHtml(lastFetched)}</div>`;
   };
   const startElapsedTimer = () => {

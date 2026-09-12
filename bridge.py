@@ -4,6 +4,7 @@ import json
 import copy
 import hashlib
 import threading
+import time
 import traceback
 from dataclasses import asdict
 from datetime import datetime
@@ -91,7 +92,8 @@ class Api:
         self._case_ai_status: dict[str, dict] = {}
         self._crm_sync_status = {
             "running": False, "done": False, "error": None,
-            "stage": "", "result": None,
+            "stage": "", "result": None, "started_at": None,
+            "elapsed_seconds": 0,
         }
         self._lock = threading.Lock()
         # Restore the latest local CRM snapshot only. This is deliberately
@@ -284,6 +286,7 @@ class Api:
             self._crm_sync_status = {
                 "running": True, "done": False, "error": None,
                 "stage": "در حال اتصال به CRM...", "result": None,
+                "started_at": time.time(), "elapsed_seconds": 0,
             }
         thread = threading.Thread(
             target=self._sync_crm_view_worker,
@@ -295,7 +298,12 @@ class Api:
 
     def get_crm_sync_status(self) -> dict:
         with self._lock:
-            return copy.deepcopy(self._crm_sync_status)
+            status = copy.deepcopy(self._crm_sync_status)
+            if status.get("running") and status.get("started_at"):
+                status["elapsed_seconds"] = max(
+                    0, int(time.time() - status["started_at"])
+                )
+            return status
 
     def _sync_crm_view_worker(self, payload: dict) -> None:
         try:
@@ -309,6 +317,9 @@ class Api:
                 self._crm_sync_status.update({
                     "running": False, "done": True, "error": None,
                     "stage": "دریافت اطلاعات کامل شد", "result": result,
+                    "elapsed_seconds": int(
+                        time.time() - (self._crm_sync_status.get("started_at") or time.time())
+                    ),
                 })
         except Exception as exc:  # noqa: BLE001
             traceback.print_exc()
@@ -317,6 +328,9 @@ class Api:
                     "running": False, "done": False,
                     "error": str(exc), "stage": "دریافت CRM ناموفق بود",
                     "result": None,
+                    "elapsed_seconds": int(
+                        time.time() - (self._crm_sync_status.get("started_at") or time.time())
+                    ),
                 })
 
     def _perform_crm_sync(self, payload: dict) -> dict:
