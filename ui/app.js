@@ -584,6 +584,7 @@ async function loadCrmSettings() {
   if (s.last_snapshot) {
     const m = s.last_snapshot.metadata || {};
     const fetchedAt = m.fetched_at || s.last_snapshot.fetched_at;
+    window._crmLastFetchedAt = fetchedAt;
     document.getElementById('crm-status').textContent =
       `آخرین دریافت ذخیره‌شده: ${toShamsiStr(fetchedAt)} — View: ${s.last_snapshot.view_name}. برای دریافت جدید دکمه واکشی را بزنید.`;
   }
@@ -662,6 +663,7 @@ async function syncCrmView() {
   if (button) button.disabled = true;
   box.textContent = 'در حال دریافت داده از CRM...';
   const startedAt = Date.now();
+  let elapsedTimer = null;
   const formatElapsed = () => {
     const seconds = Math.floor((Date.now() - startedAt) / 1000);
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -669,11 +671,23 @@ async function syncCrmView() {
   const renderCrmProgress = (status) => {
     const percent = Number.isFinite(status.progress) && status.progress > 0 ? status.progress : 8;
     const detail = status.progress_detail ? ` — ${status.progress_detail}` : '';
+    const lastFetched = window._crmLastFetchedAt
+      ? `آخرین به‌روزرسانی ذخیره‌شده: ${toShamsiStr(window._crmLastFetchedAt)}`
+      : 'آخرین به‌روزرسانی ذخیره‌شده: هنوز ثبت نشده است';
     box.innerHTML = `<div>${escapeHtml(status.stage || 'در حال دریافت داده از CRM...')}${escapeHtml(detail)}</div>
       <div class="progress-bar crm-progress"><div style="width:${Math.min(100, percent)}%"></div></div>
-      <div class="crm-progress-meta">زمان سپری‌شده: ${formatElapsed()}${status.progress_total ? ` | پیشرفت: ${status.progress_completed} از ${status.progress_total}` : ' | تعداد کل هنوز از CRM اعلام نشده است'}</div>`;
+      <div class="crm-progress-meta">زمان سپری‌شده: <span id="crm-elapsed-time">${formatElapsed()}</span>${status.progress_total ? ` | پیشرفت: ${status.progress_completed} از ${status.progress_total}` : ' | تعداد کل هنوز از CRM اعلام نشده است'}</div>
+      <div class="crm-progress-meta">${escapeHtml(lastFetched)}</div>`;
+  };
+  const startElapsedTimer = () => {
+    if (elapsedTimer) clearInterval(elapsedTimer);
+    elapsedTimer = setInterval(() => {
+      const target = document.getElementById('crm-elapsed-time');
+      if (target) target.textContent = formatElapsed();
+    }, 1000);
   };
   try {
+    startElapsedTimer();
     const payload = crmPayload();
     payload.include_related_activities = Boolean(document.getElementById('crm-related-activities')?.checked);
     const started = await api().sync_crm_view(payload);
@@ -694,6 +708,7 @@ async function syncCrmView() {
         return;
       }
       const res = status.result;
+      if (res.fetched_at) window._crmLastFetchedAt = res.fetched_at;
       setFileInputEnabled(false);
       state.datasetLoaded = true;
       state.dateBounds = res.date_bounds;
@@ -718,6 +733,7 @@ async function syncCrmView() {
   } catch (e) {
     box.textContent = `خطا در دریافت CRM: ${e.message || e}`;
   } finally {
+    if (elapsedTimer) clearInterval(elapsedTimer);
     if (button) button.disabled = false;
   }
 }
