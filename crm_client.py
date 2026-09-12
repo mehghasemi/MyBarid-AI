@@ -287,8 +287,9 @@ class DynamicsCRMClient:
                 f"View شخصی «{self.view_name}» پیدا نشد یا برای کاربر Windows فعلی Share نشده است."
             )
         view = values[0]
-        if view.get("returnedtypecode") != "annotation":
-            raise CRMClientError("View انتخاب‌شده روی موجودیت Note/annotation نیست.")
+        returned_type = str(view.get("returnedtypecode") or "").casefold()
+        if returned_type not in {"annotation", "incident"}:
+            raise CRMClientError("View انتخاب‌شده از نوع مورد (Case) یا Note نیست.")
         return view
 
     def list_note_views(self) -> list[dict]:
@@ -302,7 +303,7 @@ class DynamicsCRMClient:
             payload = _powershell_get_json(f"{self.api_root}/{entity}?{select}",
                                            self.username, self.password)
             for row in payload.get("value") or []:
-                if row.get("returnedtypecode") == "annotation" and row.get("name"):
+                if row.get("returnedtypecode") in {"annotation", "incident"} and row.get("name"):
                     views.append({
                         "id": row.get(id_key), "name": row["name"],
                         "scope": scope, "kind": entity,
@@ -330,8 +331,12 @@ class DynamicsCRMClient:
         fetchxml = view.get("fetchxml")
         if not fetchxml:
             raise CRMClientError("View فاقد FetchXML قابل اجرا است.")
+        returned_type = str(view.get("returnedtypecode") or "").casefold()
+        entity_set = {"annotation": "annotations", "incident": "incidents"}.get(returned_type)
+        if not entity_set:
+            raise CRMClientError("Unsupported CRM View entity type.")
         query_fetchxml = _add_modified_since_filter(fetchxml, since) if since else fetchxml
-        url = f"{self.api_root}/annotations?fetchXml={quote(query_fetchxml, safe='')}"
+        url = f"{self.api_root}/{entity_set}?fetchXml={quote(query_fetchxml, safe='')}"
         progress("در حال دریافت صفحه اول View...")
         payload = _powershell_get_json(url, self.username, self.password)
         rows = list(payload.get("value") or [])
@@ -362,14 +367,14 @@ class DynamicsCRMClient:
                 case_ids.add(case_id)
                 case_context.setdefault(case_id, row)
 
-        expanded_notes = list(rows)
+        expanded_notes = [] if returned_type == "incident" else list(rows)
         note_ids = {
             str(_value(row, "annotationid") or "").casefold()
             for row in expanded_notes
             if _value(row, "annotationid")
         }
         expanded_tasks: list[dict] = []
-        related_case_ids = sorted(case_ids) if include_related_activities else []
+        related_case_ids = sorted(case_ids) if (include_related_activities or returned_type == "incident") else []
         for index, case_id in enumerate(related_case_ids, start=1):
             progress("در حال دریافت Note و Taskهای وابسته...", index - 1,
                      len(related_case_ids), f"مورد {index - 1} از {len(related_case_ids)}")
@@ -463,7 +468,7 @@ class DynamicsCRMClient:
             ambiguous={}, unmatched_headers=[],
             warnings=[
                 "Note و Taskهای وابسته نیز دریافت شدند."
-                if include_related_activities
+                if include_related_activities or returned_type == "incident"
                 else "فقط رکوردهای View دریافت شدند؛ دریافت Note و Taskهای وابسته فعال نشده است."
             ],
         )
@@ -479,5 +484,5 @@ class DynamicsCRMClient:
             "since": _iso(since),
             "max_modified_on": _iso(max(modified_dates)) if modified_dates else _iso(since),
             "fetchxml_hash": hashlib.sha256(fetchxml.encode("utf-8")).hexdigest(),
-            "related_activities": bool(include_related_activities),
+            "related_activities": bool(include_related_activities or returned_type == "incident"),
         }
