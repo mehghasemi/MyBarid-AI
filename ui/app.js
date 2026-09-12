@@ -136,7 +136,7 @@ async function showPage(name) {
       if (!info?.loaded && !(name === 'cases' && datasetInfo?.loaded)) {
         toast(
           name === 'cases'
-            ? 'هنوز داده‌ای برای نمایش وجود ندارد؛ ابتدا داده را از CRM یا فایل دریافت کنید.'
+            ? 'هنوز داده‌ای برای نمایش وجود ندارد؛ ابتدا داده را از CRM دریافت کنید.'
             : 'برای این داده هنوز نتیجه تحلیل ذخیره نشده است.',
           'error'
         );
@@ -155,7 +155,7 @@ async function showPage(name) {
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === name));
   document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === 'page-' + name));
   const pageTitles = {
-    upload: 'ورودی داده‌ها', periods: 'آماده‌سازی و اجرای تحلیل',
+    upload: 'ورود و دریافت از CRM', periods: 'آماده‌سازی و اجرای تحلیل',
     dashboard: 'داشبورد', general: 'تحلیل کلی', comparison: 'مقایسه دوره‌ها',
     ranking: 'عملکرد کارشناسان', cases: 'جزئیات موارد / Taskها',
     suspicious: 'موارد نیازمند بررسی', 'data-quality': 'سلامت داده',
@@ -177,7 +177,7 @@ async function showPage(name) {
 
 function applyNavigationLabels() {
   const labels = {
-    upload: '📂 ورودی داده‌ها',
+    upload: '📥 ورود و دریافت از CRM',
     periods: '🧭 آماده‌سازی و اجرای تحلیل',
     dashboard: '📊 داشبورد',
     general: '🔎 تحلیل کلی',
@@ -643,6 +643,11 @@ async function loadCrmSettings() {
     state.datasetLoaded = true;
     document.getElementById('dataset-status').textContent =
       `${local.total_cases.toLocaleString('fa-IR')} مورد | Snapshot محلی CRM`;
+    const localSnapshotBox = document.getElementById('local-crm-snapshot-status');
+    if (localSnapshotBox) {
+      const fetched = s.last_snapshot?.metadata?.fetched_at || s.last_snapshot?.fetched_at;
+      localSnapshotBox.textContent = fetched ? 'آخرین دریافت از CRM: ' + toShamsiStr(fetched) + '\n' + local.total_cases.toLocaleString('fa-IR') + ' مورد در بانک محلی موجود است.' : 'Snapshot محلی موجود است؛ زمان دریافت ثبت نشده است.';
+    }
     await initializeCaseSelection();
     const analysis = await api().get_analysis_info();
     if (analysis?.loaded) {
@@ -2149,32 +2154,11 @@ function initApp() {
 }
 
 function organizeInputSources() {
+  // The UI is CRM-only. Excel support remains backend-compatible but is not exposed.
   const page = document.getElementById('page-upload');
-  if (!page || page.dataset.sourcesOrganized === '1') return;
-  const crmCard = page.querySelector('button[onclick*="syncCrmView"]')?.closest('.card');
-  const fileGrid = page.querySelector('.grid.cols-2');
-  const uploadActions = document.getElementById('btn-upload')?.parentElement;
-  const autoCard = page.querySelector('.auto-input-card');
-  if (!crmCard || !fileGrid || !uploadActions || !autoCard) return;
-
-  const makeDetails = (title, nodes) => {
-    const details = document.createElement('details');
-    details.className = 'input-source-details';
-    const summary = document.createElement('summary');
-    summary.textContent = title;
-    details.appendChild(summary);
-    nodes.forEach(node => details.appendChild(node));
-    return details;
-  };
-
-  const crmDetails = makeDetails('اتصال خواندنی به Microsoft Dynamics 365', [crmCard]);
-  const fileDetails = makeDetails('بارگذاری و بازخوانی از فایل Excel', [
-    fileGrid, uploadActions, autoCard,
-  ]);
-  page.insertBefore(crmDetails, page.firstChild.nextSibling);
-  page.insertBefore(fileDetails, crmDetails.nextSibling);
-  page.dataset.sourcesOrganized = '1';
+  if (page) page.dataset.sourcesOrganized = '1';
 }
+
 
 if (apiMethodsReady()) {
   initApp();

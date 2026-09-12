@@ -53,7 +53,7 @@
       <div class="nav-item" data-page="export">⬇️ Export</div>
 
       <div class="nav-section-title">تنظیمات</div>
-      <div class="nav-item active" data-page="upload">📂 ورودی داده‌ها</div>
+      <div class="nav-item active" data-page="upload">📥 ورود و دریافت از CRM</div>
       <div class="nav-item" data-page="periods">🧭 آماده‌سازی و اجرای تحلیل</div>
       <div class="nav-item" data-page="expert-groups">👥 گروه‌بندی کارشناسان</div>
       <div class="nav-item" data-page="criteria" data-help="معیارها و نحوه محاسبه\n\nکاربرد: معیارهای ارزیابی را فعال یا غیرفعال می‌کند و وزن هر معیار را تعیین می‌کند.\n\nاثر روی نتیجه: معیار فعال در امتیاز نهایی وارد می‌شود؛ وزن بیشتر یعنی اثر بیشتر. معیار غیرفعال از محاسبه کنار گذاشته می‌شود.\n\nمثال: برای کیس‌های رفع مشکل می‌توانید «درک مسئله» و «تناسب راهکار» را فعال و وزن‌دهی کنید.\n\nنکته: تغییرات از تحلیل بعدی اعمال می‌شوند و نتیجه تحلیل قبلی را تغییر نمی‌دهند.">⚖️ معیارها و وزن‌ها</div>
@@ -67,7 +67,7 @@
     </div>
 
     <div class="spacer"></div>
-    <div class="status-pill" id="dataset-status">فایلی بارگذاری نشده است.</div>
+    <div class="status-pill" id="dataset-status">داده CRM هنوز دریافت نشده است.</div>
     <button id="app-version" class="app-version-btn sidebar-version-btn" onclick="openChangelog()" title="مشاهده تاریخچه تغییرات">نگارش: —</button>
   </div>
 
@@ -188,47 +188,17 @@
     </header>
     <!-- ============================================================ Upload -->
     <section class="page active" id="page-upload">
-      <h1 class="page-title">بارگذاری فایل‌های Notes و Tasks</h1>
-      <p class="page-sub">فایل‌های اکسپورت‌شده از Dynamics CRM را انتخاب کنید. برنامه ستون‌ها را به‌صورت خودکار شناسایی می‌کند.</p>
+      <h1 class="page-title">ورود و دریافت اطلاعات از CRM</h1>
+      <p class="page-sub">داده‌ها فقط به‌صورت خواندنی از Microsoft Dynamics 365 دریافت می‌شوند. اطلاعات واکشی‌شده و نتایج تحلیل در بانک محلی برنامه نگهداری می‌شوند.</p>
 
-      <div class="grid cols-2">
-        <div class="card">
-          <h3>فایل Notes</h3>
-          <div class="upload-box">
-            <div>📄 فایل حاوی Note های مورد</div>
-            <button class="btn primary" id="btn-file-notes" style="margin-top:12px" onclick="pickFile('notes')">انتخاب فایل...</button>
-            <div class="file-name" id="notes-file-name">فایلی انتخاب نشده</div>
+      <div class="card crm-source-card">
+        <div class="section-heading-row">
+          <div>
+            <h3>اتصال خواندنی به Microsoft Dynamics 365</h3>
+            <p class="page-sub">برنامه فقط اطلاعات View انتخاب‌شده را می‌خواند و هیچ تغییری در CRM ثبت نمی‌کند.</p>
           </div>
+          <span class="badge info">فقط خواندنی</span>
         </div>
-        <div class="card">
-          <h3>فایل Tasks</h3>
-          <div class="upload-box">
-            <div>📄 فایل حاوی Task های کارشناسان</div>
-            <button class="btn primary" id="btn-file-tasks" style="margin-top:12px" onclick="pickFile('tasks')">انتخاب فایل...</button>
-            <div class="file-name" id="tasks-file-name">فایلی انتخاب نشده</div>
-          </div>
-        </div>
-      </div>
-
-      <div style="margin-top:18px">
-        <button class="btn primary" id="btn-upload" onclick="doUpload()" disabled>پردازش و اعتبارسنجی فایل‌ها</button>
-        <button class="btn" onclick="clearDataset()">پاک‌کردن داده بارگذاری‌شده</button>
-      </div>
-
-      <div class="card auto-input-card" style="margin-top:16px">
-        <h3>بارگذاری خودکار هنگام اجرای برنامه</h3>
-        <p class="page-sub">دو فایل Excel با نام‌های ثابت را در پوشه زیر قرار دهید تا در شروع برنامه خودکار بارگذاری شوند.</p>
-        <div id="auto-input-info" class="muted-box">در حال بررسی پوشه ورودی...</div>
-        <button class="btn" id="btn-auto-files" style="margin-top:10px" onclick="autoLoadDefaultFiles()">بازخوانی فایل‌های ورودی</button>
-        <div id="file-source-disabled" class="muted-box" style="display:none;margin-top:10px">
-          منبع فعال CRM است. برای استفاده از Excel ابتدا «فعال‌سازی ورود از فایل» را بزنید.
-          <button class="btn" style="margin-top:8px" onclick="useFileSource()">فعال‌سازی ورود از فایل</button>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:16px">
-        <h3>اتصال خواندنی به Microsoft Dynamics 365</h3>
-        <p class="page-sub">اطلاعات View انتخاب‌شده از CRM با حساب Windows فعلی خوانده می‌شود و هیچ تغییری در CRM ثبت نمی‌شود.</p>
         <div class="row">
           <div class="field"><label class="field-label">آدرس CRM</label><input id="crm-base-url" value="https://crm.baridsoft.ir"></div>
           <div class="field"><label class="field-label">سازمان</label><input id="crm-organization" value="Main"></div>
@@ -237,24 +207,38 @@
           <div class="field">
             <label class="field-label">View موردنظر</label>
             <select id="crm-view-name">
-              <option value="داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر">داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر (پیش‌فرض)</option>
+              <option value="داشبورد مدیریتی مورد های ثبت شده هلپدسک چهار ماه اخیر">داشبورد مدیریتی مورد های ثبت شده هلپدسک چهار ماه اخیر (پیش‌فرض)</option>
             </select>
           </div>
         </div>
+        <div class="crm-actions">
+          <button class="btn" id="crm-load-views" onclick="loadCrmViews()">دریافت فهرست Viewها</button>
+          <button class="btn" onclick="testCrmConnection()">آزمون اتصال</button>
+          <button class="btn primary" onclick="syncCrmView()">دریافت و به‌روزرسانی داده</button>
+        </div>
+        <div class="crm-options">
+          <label class="inline-check"><input id="crm-full-sync" type="checkbox"> همگام‌سازی کامل و بررسی حذف رکوردها</label>
+          <label class="inline-check"><input id="crm-related-activities" type="checkbox"> دریافت Note و Taskهای وابسته هر مورد <span class="muted">(کامل‌تر اما کندتر)</span></label>
+        </div>
         <div id="crm-status" class="muted-box">وضعیت اتصال CRM هنوز بررسی نشده است.</div>
-        <button class="btn" id="crm-load-views" onclick="loadCrmViews()">دریافت فهرست Viewها</button>
-        <button class="btn" onclick="testCrmConnection()">آزمون اتصال</button>
-        <button class="btn primary" onclick="syncCrmView()">دریافت داده از View</button>
-        <label class="inline-check" style="margin-top:10px">
-          <input id="crm-full-sync" type="checkbox">
-          همگام‌سازی کامل (بررسی حذف‌شدن رکوردها)
-        </label>
-        <label class="inline-check" style="margin-top:8px">
-          <input id="crm-related-activities" type="checkbox">
-          دریافت Note و Taskهای وابسته هر مورد (کندتر؛ فقط در صورت نیاز فعال کنید)
-        </label>
       </div>
 
+      <div class="grid cols-2 crm-local-status-grid">
+        <div class="card">
+          <h3>Snapshot محلی برنامه</h3>
+          <p class="page-sub">آخرین داده دریافت‌شده از CRM در بانک محلی نگهداری می‌شود و برای مشاهده و تحلیل، نیاز به دریافت مجدد ندارد.</p>
+          <div id="local-crm-snapshot-status" class="muted-box">در حال بررسی آخرین Snapshot محلی...</div>
+        </div>
+        <div class="card">
+          <h3>مراحل کار</h3>
+          <ol class="compact-steps">
+            <li>اتصال و دریافت فهرست Viewها</li>
+            <li>انتخاب View و دریافت داده</li>
+            <li>ذخیره Snapshot در بانک محلی</li>
+            <li>انتخاب موارد و اجرای تحلیل</li>
+          </ol>
+        </div>
+      </div>
       <div id="upload-result" style="margin-top:20px"></div>
     </section>
 
@@ -311,9 +295,7 @@
         </div>
       </div>
 
-      <div class="muted-box" style="margin-bottom:14px">
-        <b>منبع اطلاعات را انتخاب کنید:</b> می‌توانید از فایل‌های Excel استفاده کنید یا داده‌ها را مستقیماً از یک View در CRM دریافت نمایید.
-      </div>
+      
       <div class="grid cols-2">
         <div class="card">
           <h3>دوره اول</h3>
@@ -411,7 +393,7 @@
         <div class="field">
           <label class="field-label">انتخاب کارشناسان (از داده بارگذاری‌شده)</label>
           <div id="expert-checklist" style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:10px">
-            <span style="color:var(--muted);font-size:12.5px">ابتدا فایل‌ها را بارگذاری کنید.</span>
+            <span style="color:var(--muted);font-size:12.5px">ابتدا داده را از CRM دریافت کنید.</span>
           </div>
         </div>
         <button class="btn primary" onclick="saveNewExpertGroup()">ذخیره گروه</button>
