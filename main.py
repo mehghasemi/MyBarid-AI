@@ -46,6 +46,12 @@ def _show_fatal_error(title: str, message: str) -> None:
 def main():
     db.init_db()
     api = Api()
+    if "--web" in sys.argv or os.environ.get("MYBARID_WEB_MODE") == "1":
+        from web_server import run_web_server
+        host = os.environ.get("MYBARID_WEB_HOST", "127.0.0.1")
+        port = int(os.environ.get("MYBARID_WEB_PORT", "42001"))
+        run_web_server(api, host=host, port=port, static_dir=APP_ROOT / "ui")
+        return
     index_path = APP_ROOT / "ui" / "index.html"
 
     window = webview.create_window(

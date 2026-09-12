@@ -54,7 +54,7 @@ if errorlevel 1 (
 
 echo.
 echo [3/3] Starting the application...
-"%PYTHON_EXE%" main.py
+"%PYTHON_EXE%" main.py %*
 
 set "APP_EXIT_CODE=%errorlevel%"
 echo.

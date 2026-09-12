@@ -26,7 +26,25 @@ const state = {
   currentExpert: null,
 };
 
-function api() { return window.pywebview.api; }
+function api() {
+  if (window.pywebview && window.pywebview.api) return window.pywebview.api;
+  return window.webAppApi;
+}
+
+if (!window.pywebview) {
+  window.webAppApi = new Proxy({}, {
+    get(_target, method) {
+      return (...args) => fetch('/api/call', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({method, args}),
+      }).then(async response => {
+        const payload = await response.json().catch(() => ({ok: false, error: 'پاسخ Backend قابل خواندن نیست.'}));
+        if (!response.ok || payload.ok === false) throw new Error(payload.error || 'عملیات ناموفق بود.');
+        return payload.result;
+      });
+    },
+  });
+}
 
 function showConfirmDialog(message, title = 'تأیید عملیات') {
   return new Promise(resolve => {
@@ -2171,10 +2189,8 @@ async function exportExpertReport() {
 ------------------------------------------------------------------------ */
 let appInitialized = false;
 function apiMethodsReady() {
-  return !!(window.pywebview && window.pywebview.api &&
-    typeof window.pywebview.api.get_criteria === 'function' &&
-    typeof window.pywebview.api.get_ai_settings === 'function' &&
-    typeof window.pywebview.api.pick_file === 'function');
+  const bridge = api();
+  return !!(bridge && typeof bridge.get_criteria === 'function' && typeof bridge.get_ai_settings === 'function');
 }
 function initApp() {
   if (appInitialized) return;
