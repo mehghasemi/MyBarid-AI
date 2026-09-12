@@ -41,6 +41,7 @@ CURRENT_CRITERIA_CATEGORIES = {
     "documentation_sufficiency",
     "data_quality",
 }
+CRM_FULL_RECONCILIATION_INTERVAL_SECONDS = 7 * 24 * 60 * 60
 
 
 def get_app_version() -> str:
@@ -366,14 +367,33 @@ class Api:
         same_view = bool(previous and previous.get("view_name") == settings["view_name"])
         sync_count = int(previous_meta.get("sync_count") or 0)
         force_full = bool(payload.get("full_sync"))
-        # Deleted records are not returned by a modifiedon query, so perform a
-        # complete reconciliation periodically or when explicitly requested.
+        previous_watermarks = previous_meta.get("watermarks") or {}
+        view_entity = str(previous_meta.get("view_entity_type") or "annotation").casefold()
+        case_watermark = previous_watermarks.get("incident") or previous_meta.get("max_case_modified_on")
+        activity_watermark = previous_watermarks.get("activity") or previous_meta.get("max_note_modified_on")
+        if view_entity != "incident":
+            case_watermark = previous_watermarks.get(view_entity) or previous_meta.get("max_modified_on")
+        last_full_at = previous_meta.get("last_full_sync_at")
+        full_reconcile_due = True
+        if last_full_at:
+            try:
+                full_reconcile_due = (
+                    datetime.now() - datetime.fromisoformat(last_full_at)
+                ).total_seconds() >= CRM_FULL_RECONCILIATION_INTERVAL_SECONDS
+            except ValueError:
+                full_reconcile_due = True
+        # Deleted records are not returned by a modifiedon query. Reconcile
+        # periodically, while keeping normal refreshes incremental.
         incremental = (
             same_view and not force_full
-            and previous_meta.get("max_modified_on")
-            and sync_count % 10 != 9
+            and case_watermark
+            and not full_reconcile_due
         )
-        since = datetime.fromisoformat(previous_meta["max_modified_on"]) if incremental else None
+        since = datetime.fromisoformat(case_watermark) if incremental and case_watermark else None
+        activity_since = (
+            datetime.fromisoformat(activity_watermark)
+            if incremental and activity_watermark else None
+        )
         with self._lock:
             self._crm_sync_status.update({
                 "sync_mode": "incremental" if incremental else "full",
@@ -398,6 +418,7 @@ class Api:
         try:
             dataset, metadata = client.fetch_view_dataset(
                 since=since,
+                activity_since=activity_since,
                 include_related_activities=bool(payload.get("include_related_activities")),
                 progress_callback=report_progress,
             )
@@ -452,6 +473,16 @@ class Api:
                 if not incremental else 0
             ),
             "sync_count": sync_count + 1,
+            "last_full_sync_at": (
+                metadata["fetched_at"] if not incremental
+                else previous_meta.get("last_full_sync_at")
+            ),
+            "watermarks": {
+                "incident": metadata.get("max_case_modified_on") or case_watermark,
+                "activity": metadata.get("max_note_modified_on") or activity_watermark,
+                "annotation": metadata.get("max_note_modified_on") or activity_watermark,
+                "task": metadata.get("max_task_modified_on") or activity_watermark,
+            },
         })
         db.save_crm_snapshot("dynamics365", settings["view_name"], metadata["fetched_at"],
                              metadata, current_payload)
@@ -471,7 +502,7 @@ class Api:
         return {
             "ok": True, "source": "CRM", "view_name": settings["view_name"],
             "fetched_at": metadata["fetched_at"], "total_cases": len(dataset.cases),
-            "total_notes": len(dataset.notes), "total_tasks": 0,
+            "total_notes": len(dataset.notes), "total_tasks": len(dataset.tasks),
             "date_bounds": self._dataset_date_bounds(dataset),
             "new_or_changed_notes": metadata["new_or_changed_notes"],
             "unchanged_notes": metadata["unchanged_notes"],

@@ -4,6 +4,7 @@ from unittest.mock import patch
 from crm_client import (
     DynamicsCRMClient,
     _add_modified_since_filter,
+    _build_related_activity_fetchxml,
     dataset_from_payload,
 )
 from database import db
@@ -21,6 +22,18 @@ def test_modified_since_filter_preserves_view_filters():
     assert 'attribute="createdon"' in updated
     assert 'attribute="modifiedon"' in updated
     assert 'operator="gt"' in updated
+    assert 'value="2026-08-29T10:30:00Z"' in updated
+
+
+def test_related_activity_fetch_can_use_independent_watermark():
+    fetchxml = '<fetch><entity name="incident"><attribute name="incidentid" /></entity></fetch>'
+    updated = _build_related_activity_fetchxml(
+        fetchxml,
+        "annotation",
+        datetime(2026, 8, 29, 10, 30, 0),
+    )
+    assert 'entity name="annotation"' in updated
+    assert 'attribute="modifiedon"' in updated
     assert 'value="2026-08-29T10:30:00Z"' in updated
 
 

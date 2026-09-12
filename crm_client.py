@@ -283,7 +283,11 @@ def _powershell_get_json(url: str, username: str = "", password: str = "") -> di
     return payload
 
 
-def _build_related_activity_fetchxml(case_fetchxml: str, activity_entity: str) -> str:
+def _build_related_activity_fetchxml(
+    case_fetchxml: str,
+    activity_entity: str,
+    since: datetime | None = None,
+) -> str:
     """Build one batched activity query from the selected Case View."""
     root = ElementTree.fromstring(case_fetchxml)
     case_entity = root.find("./entity")
@@ -298,10 +302,17 @@ def _build_related_activity_fetchxml(case_fetchxml: str, activity_entity: str) -
         attributes = ("annotationid", "notetext", "createdon", "modifiedon", "modifiedby", "objectid")
         to_attribute = "objectid"
     else:
-        attributes = ("activityid", "subject", "description", "createdon", "actualstart", "scheduledend", "statuscode", "ownerid", "regardingobjectid")
+        attributes = ("activityid", "subject", "description", "createdon", "modifiedon", "actualstart", "scheduledend", "statuscode", "ownerid", "regardingobjectid")
         to_attribute = "regardingobjectid"
     for name in attributes:
         ElementTree.SubElement(activity, "attribute", {"name": name})
+    if since:
+        activity_filter = ElementTree.SubElement(activity, "filter", {"type": "and"})
+        ElementTree.SubElement(activity_filter, "condition", {
+            "attribute": "modifiedon",
+            "operator": "gt",
+            "value": since.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        })
     link = ElementTree.fromstring(ElementTree.tostring(case_entity, encoding="unicode"))
     link.tag = "link-entity"
     link.attrib = {"name": "incident", "from": "incidentid", "to": to_attribute, "alias": "ac"}
@@ -375,6 +386,7 @@ class DynamicsCRMClient:
     def fetch_view_dataset(
         self,
         since: datetime | None = None,
+        activity_since: datetime | None = None,
         include_related_activities: bool = False,
         progress_callback=None,
     ) -> tuple[Dataset, dict]:
@@ -399,6 +411,7 @@ class DynamicsCRMClient:
         progress("در حال دریافت صفحه اول View...", 0, 0, "درخواست FetchXML ارسال شد")
         payload = _powershell_get_json(url, self.username, self.password)
         rows = list(payload.get("value") or [])
+        view_rows = list(rows)
         progress("صفحه اول View دریافت شد", 0, 0, f"زمان پاسخ: {time.perf_counter() - page_started:.1f} ثانیه؛ {len(rows):,} رکورد")
         # Dataverse may paginate FetchXML results. The first response can
         # contain only a small page even when the selected View has many more
@@ -425,12 +438,16 @@ class DynamicsCRMClient:
 
         if returned_type == "incident":
             progress("در حال دریافت Noteهای مرتبط با موردها...", 0, 2, "یک درخواست گروهی")
-            note_fetchxml = _build_related_activity_fetchxml(query_fetchxml, "annotation")
+            note_fetchxml = _build_related_activity_fetchxml(
+                fetchxml, "annotation", activity_since or since
+            )
             note_url = f"{self.api_root}/annotations?fetchXml={quote(note_fetchxml, safe='')}"
             expanded_notes = _paged_values(note_url, self.username, self.password)
             progress("دریافت Noteهای مرتبط انجام شد", 1, 2, f"{len(expanded_notes):,} Note")
             progress("در حال دریافت Taskهای مرتبط با موردها...", 1, 2, "یک درخواست گروهی")
-            task_fetchxml = _build_related_activity_fetchxml(query_fetchxml, "task")
+            task_fetchxml = _build_related_activity_fetchxml(
+                fetchxml, "task", activity_since or since
+            )
             task_url = f"{self.api_root}/tasks?fetchXml={quote(task_fetchxml, safe='')}"
             expanded_tasks = _paged_values(task_url, self.username, self.password)
             progress("دریافت Taskهای مرتبط انجام شد", 2, 2, f"{len(expanded_tasks):,} Task")
@@ -537,13 +554,31 @@ class DynamicsCRMClient:
             notes=notes, tasks=tasks, cases=cases, unmatched_tasks=unmatched,
             notes_summary=summary, tasks_summary=summary,
         )
-        modified_dates = [n.note_date for n in notes if n.note_date]
+        case_dates = [
+            parse_datetime(_value(row, "modifiedon"))
+            for row in (view_rows if returned_type == "incident" else [])
+            if _value(row, "modifiedon")
+        ]
+        note_dates = [n.note_date for n in notes if n.note_date]
+        task_dates = [
+            parse_datetime(_value(row, "modifiedon", "createdon"))
+            for row in expanded_tasks
+            if _value(row, "modifiedon", "createdon")
+        ]
+        modified_dates = note_dates + task_dates + case_dates
+        def watermark(values, fallback):
+            return _iso(max(values)) if values else _iso(fallback)
         return dataset, {
             "view_name": self.view_name, "view_id": view.get("userqueryid"),
             "fetched_at": now, "row_count": len(rows), "api_root": self.api_root,
             "sync_mode": "incremental" if since else "full",
             "since": _iso(since),
-            "max_modified_on": _iso(max(modified_dates)) if modified_dates else _iso(since),
+            "activity_since": _iso(activity_since),
+            "max_modified_on": watermark(modified_dates, since),
+            "max_case_modified_on": watermark(case_dates, since),
+            "max_note_modified_on": watermark(note_dates, activity_since or since),
+            "max_task_modified_on": watermark(task_dates, activity_since or since),
+            "view_entity_type": returned_type,
             "fetchxml_hash": hashlib.sha256(fetchxml.encode("utf-8")).hexdigest(),
             "related_activities": bool(include_related_activities or returned_type == "incident"),
         }
