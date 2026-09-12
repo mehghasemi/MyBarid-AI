@@ -729,12 +729,20 @@ async function syncCrmView() {
   const renderCrmProgress = (status) => {
     const percent = Number.isFinite(status.progress) && status.progress > 0 ? status.progress : 8;
     const detail = status.progress_detail ? ` — ${status.progress_detail}` : '';
+    const operation = status.sync_mode === 'incremental'
+      ? 'همگام‌سازی افزایشی: فقط داده‌های جدید و تغییرکرده دریافت می‌شوند.'
+      : 'همگام‌سازی کامل: فهرست انتخاب‌شده از ابتدا بررسی می‌شود.';
+    const help = status.progress_total
+      ? 'دریافت در حال انجام است؛ تا پایان این پنجره را نبندید.'
+      : 'CRM هنوز تعداد کل رکوردها را اعلام نکرده است؛ برنامه در حال برقراری ارتباط و دریافت پاسخ اولیه است.';
     const lastFetched = window._crmLastFetchedAt
       ? `آخرین به‌روزرسانی ذخیره‌شده: ${toShamsiStr(window._crmLastFetchedAt)}`
       : 'آخرین به‌روزرسانی ذخیره‌شده: هنوز ثبت نشده است';
-    box.innerHTML = `<div>${escapeHtml(status.stage || 'در حال دریافت داده از CRM...')}${escapeHtml(detail)}</div>
+    box.innerHTML = `<div class="crm-sync-title"><span class="crm-sync-spinner" aria-hidden="true"></span><strong>${escapeHtml(status.stage || 'در حال دریافت داده از CRM...')}</strong>${escapeHtml(detail)}</div>
+      <div class="crm-sync-operation">${operation}</div>
       <div class="progress-bar crm-progress"><div style="width:${Math.min(100, percent)}%"></div></div>
       <div class="crm-progress-meta">زمان سپری‌شده: <span id="crm-elapsed-time">${formatBackendElapsed(status)}</span>${status.progress_total ? ` | پیشرفت: ${status.progress_completed} از ${status.progress_total}` : ' | تعداد کل هنوز از CRM اعلام نشده است'}</div>
+      <div class="crm-progress-meta crm-progress-help">${help}</div>
       <div class="crm-progress-meta">${escapeHtml(lastFetched)}</div>`;
   };
   const startElapsedTimer = () => {
@@ -758,10 +766,6 @@ async function syncCrmView() {
     const poll = async () => {
       const status = await api().get_crm_sync_status();
       if (status.running) {
-        if (Date.now() - startedAt > 90000) {
-          box.textContent = 'واکنش CRM بیش از ۹۰ ثانیه طول کشید. View کوچک‌تری انتخاب کنید یا دریافت داده‌های وابسته را خاموش کنید.';
-          return;
-        }
         renderCrmProgress(status);
         setTimeout(poll, 500);
         return;

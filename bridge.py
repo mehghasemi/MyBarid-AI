@@ -355,6 +355,13 @@ class Api:
             and sync_count % 10 != 9
         )
         since = datetime.fromisoformat(previous_meta["max_modified_on"]) if incremental else None
+        with self._lock:
+            self._crm_sync_status.update({
+                "sync_mode": "incremental" if incremental else "full",
+                "stage": "در حال آماده‌سازی همگام‌سازی افزایشی..." if incremental else "در حال آماده‌سازی همگام‌سازی کامل...",
+                "progress": 2,
+                "progress_detail": "بررسی View و زمان آخرین دریافت",
+            })
         def report_progress(stage, completed=0, total=0, detail=""):
             with self._lock:
                 self._crm_sync_status.update({

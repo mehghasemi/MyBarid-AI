@@ -684,6 +684,11 @@ label.field-label { display:block; font-size: 12px; color: var(--muted); margin-
 .progress-bar > div { height: 100%; background: var(--accent); transition: width .3s; }
 .crm-progress { margin: 10px 0 6px; height: 10px; }
 .crm-progress-meta { font-size: 12px; color: var(--muted); }
+.crm-sync-title { display:flex; align-items:center; gap:8px; color:var(--text); }
+.crm-sync-operation { margin-top:6px; font-size:12px; color:var(--muted); }
+.crm-progress-help { color:var(--accent); margin-top:4px; }
+.crm-sync-spinner { width:12px; height:12px; border:2px solid rgba(79,70,229,.22); border-top-color:var(--accent); border-radius:50%; animation:crm-sync-spin .8s linear infinite; flex:0 0 auto; }
+@keyframes crm-sync-spin { to { transform:rotate(360deg); } }
 
 .criteria-cat { margin-bottom: 18px; }
 .crit-chip-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
