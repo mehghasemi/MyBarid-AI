@@ -545,6 +545,13 @@ html, body {
 }
 
 .modal-overlay {
+.app-confirm-modal { width: min(480px, calc(100vw - 32px)); padding: 24px 26px 20px; text-align: center; direction: rtl; border: 1px solid var(--border); box-shadow: 0 18px 50px rgba(15, 23, 42, .22); animation: ui-modal-in .2s ease-out; }
+.app-confirm-icon { width: 34px; height: 34px; margin: 0 auto 10px; display: grid; place-items: center; border-radius: 50%; background: #eef2ff; color: var(--accent); font-weight: 800; }
+.app-confirm-modal h2 { margin: 0 0 14px; color: var(--text); font-size: 17px; }
+.app-confirm-message { white-space: pre-line; line-height: 2; color: var(--muted); font-size: 13px; text-align: center; }
+.app-confirm-actions { display: flex; justify-content: center; gap: 10px; margin-top: 22px; }
+.app-confirm-actions .btn { min-width: 104px; } body.modal-open { overflow: hidden; }
+
   position: fixed;
   inset: 0;
   z-index: 1600;

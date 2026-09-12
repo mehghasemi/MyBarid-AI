@@ -28,6 +28,30 @@ const state = {
 
 function api() { return window.pywebview.api; }
 
+function showConfirmDialog(message, title = 'تأیید عملیات') {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('confirm-overlay');
+    const titleEl = document.getElementById('confirm-title');
+    const messageEl = document.getElementById('confirm-message');
+    const ok = document.getElementById('confirm-ok');
+    const cancel = document.getElementById('confirm-cancel');
+    if (!overlay || !messageEl || !ok || !cancel) { resolve(window.confirm(message)); return; }
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    overlay.style.display = 'flex';
+    document.body.classList.add('modal-open');
+    const finish = value => {
+      overlay.style.display = 'none';
+      document.body.classList.remove('modal-open');
+      ok.onclick = null; cancel.onclick = null; resolve(value);
+    };
+    ok.onclick = () => finish(true);
+    cancel.onclick = () => finish(false);
+    setTimeout(() => cancel.focus(), 0);
+  });
+}
+
+
 /* ------------------------------------------------------------------------
    ناوبری
 ------------------------------------------------------------------------ */
@@ -631,7 +655,7 @@ async function loadCrmSettings() {
     const fetchedAt = s.last_snapshot?.metadata?.fetched_at || s.last_snapshot?.fetched_at;
     if (s.data_source === 'crm' && fetchedAt && !window._crmStartupUpdateAsked) {
       window._crmStartupUpdateAsked = true;
-      const shouldUpdate = window.confirm(
+      const shouldUpdate = await showConfirmDialog(
         `داده‌های محلی CRM آماده هستند.\nآخرین به‌روزرسانی: ${toShamsiStr(fetchedAt)}\n\nآیا می‌خواهید فقط تغییرات جدید و اصلاح‌شده از CRM دریافت شود؟`
       );
       if (shouldUpdate) {
@@ -794,9 +818,9 @@ async function runAnalysis(forceAi = false) {
     toast('حداقل یک مورد را برای تحلیل انتخاب کنید', 'error');
     return;
   }
-  if (forceAi && !window.confirm(
+  if (forceAi && !(await showConfirmDialog(
     `تحلیل مجدد AI برای ${state.selectedCaseKeys.size.toLocaleString('fa-IR')} مورد درخواست شده است و ممکن است سهمیه مصرف کند. ادامه می‌دهید؟`
-  )) {
+  ))) {
     return;
   }
   const mode = document.getElementById('analysis-mode').value;
@@ -1756,7 +1780,7 @@ function renderCaseAiActions(caseKey, analyzed, running = false) {
 }
 
 async function runSingleCaseAi(caseKey, force = false) {
-  if (force && !window.confirm('این مورد قبلاً با AI تحلیل شده است. تحلیل مجدد سهمیه مصرف می‌کند. ادامه می‌دهید؟')) {
+  if (force && !(await showConfirmDialog('این مورد قبلاً با AI تحلیل شده است. تحلیل مجدد سهمیه مصرف می‌کند. ادامه می‌دهید؟'))) {
     return;
   }
   renderCaseAiActions(caseKey, true, true);
