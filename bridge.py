@@ -368,12 +368,34 @@ class Api:
         sync_count = int(previous_meta.get("sync_count") or 0)
         force_full = bool(payload.get("full_sync"))
         previous_watermarks = previous_meta.get("watermarks") or {}
-        view_entity = str(previous_meta.get("view_entity_type") or "annotation").casefold()
-        case_watermark = previous_watermarks.get("incident") or previous_meta.get("max_case_modified_on")
-        activity_watermark = previous_watermarks.get("activity") or previous_meta.get("max_note_modified_on")
+        # Older Snapshots (before v1.9.85) do not have Watermarks. Bootstrap
+        # them from the Snapshot timestamp so the first run after upgrade is
+        # incremental instead of downloading the whole View again.
+        bootstrap_watermark = (
+            previous_meta.get("fetched_at")
+            or (previous or {}).get("fetched_at")
+        )
+        view_entity = str(
+            previous_meta.get("view_entity_type")
+            or ("incident" if previous_meta.get("related_activities") else "annotation")
+        ).casefold()
+        case_watermark = (
+            previous_watermarks.get("incident")
+            or previous_meta.get("max_case_modified_on")
+            or bootstrap_watermark
+        )
+        activity_watermark = (
+            previous_watermarks.get("activity")
+            or previous_meta.get("max_note_modified_on")
+            or bootstrap_watermark
+        )
         if view_entity != "incident":
-            case_watermark = previous_watermarks.get(view_entity) or previous_meta.get("max_modified_on")
-        last_full_at = previous_meta.get("last_full_sync_at")
+            case_watermark = (
+                previous_watermarks.get(view_entity)
+                or previous_meta.get("max_modified_on")
+                or bootstrap_watermark
+            )
+        last_full_at = previous_meta.get("last_full_sync_at") or bootstrap_watermark
         full_reconcile_due = True
         if last_full_at:
             try:
