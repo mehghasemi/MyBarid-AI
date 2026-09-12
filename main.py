@@ -53,8 +53,9 @@ def main():
         str(index_path),
         js_api=api,
         width=1440,
-        height=900,
-        min_size=(1100, 700),
+        height=760,
+        min_size=(1100, 600),
+        maximized=True,
         text_select=True,
     )
     api.set_window(window)
