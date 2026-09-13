@@ -94,11 +94,32 @@ def test_crm_view_fetch_follows_next_link_pages():
     ]
     client = DynamicsCRMClient(view_name="TESTNOTE")
     with patch("crm_client._powershell_get_json", side_effect=responses):
-        with patch.object(client, "_get_user_view", return_value={"fetchxml": "<fetch><entity name='annotation'/></fetch>"}):
+        with patch.object(client, "_get_user_view", return_value={
+            "fetchxml": "<fetch><entity name='annotation'/></fetch>",
+            "returnedtypecode": "annotation",
+        }):
             dataset, metadata = client.fetch_view_dataset()
 
     assert len(dataset.notes) == 3
     assert metadata["row_count"] == 3
+
+
+def test_default_view_lookup_falls_back_to_organizational_view():
+    client = DynamicsCRMClient(view_name="داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر")
+    responses = [
+        {"value": []},
+        {"value": [{
+            "name": client.view_name,
+            "savedqueryid": "saved-view-1",
+            "returnedtypecode": "annotation",
+            "fetchxml": "<fetch><entity name='annotation'/></fetch>",
+        }]},
+    ]
+    with patch("crm_client._powershell_get_json", side_effect=responses):
+        view = client._get_user_view()
+
+    assert view["view_id"] == "saved-view-1"
+    assert view["returnedtypecode"] == "annotation"
 
 
 def test_crm_view_expands_all_case_notes_and_tasks():
@@ -130,7 +151,10 @@ def test_crm_view_expands_all_case_notes_and_tasks():
     with patch("crm_client._powershell_get_json", side_effect=responses):
         with patch.object(
             client, "_get_user_view",
-            return_value={"fetchxml": "<fetch><entity name='annotation'/></fetch>"},
+            return_value={
+                "fetchxml": "<fetch><entity name='annotation'/></fetch>",
+                "returnedtypecode": "annotation",
+            },
         ):
             dataset, metadata = client.fetch_view_dataset(include_related_activities=True)
 

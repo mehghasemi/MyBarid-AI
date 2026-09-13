@@ -381,18 +381,30 @@ class DynamicsCRMClient:
         return f"{self.base_url}/{self.organization}/api/data/{self.api_version}"
 
     def _get_user_view(self) -> dict:
-        query = (
-            f"{self.api_root}/userqueries?"
-            "$select=name,userqueryid,returnedtypecode,fetchxml"
-            f"&$filter=name%20eq%20'{quote(self.view_name)}'"
+        escaped_name = quote(self.view_name)
+        searches = (
+            ("userqueries", "userqueryid"),
+            ("savedqueries", "savedqueryid"),
         )
-        payload = _powershell_get_json(query, self.username, self.password)
-        values = payload.get("value") or []
-        if not values:
-            raise CRMClientError(
-                f"View شخصی «{self.view_name}» پیدا نشد یا برای کاربر Windows فعلی Share نشده است."
+        view = None
+        view_id_key = None
+        for entity, id_key in searches:
+            query = (
+                f"{self.api_root}/{entity}?"
+                f"$select=name,{id_key},returnedtypecode,fetchxml"
+                f"&$filter=name%20eq%20'{escaped_name}'"
             )
-        view = values[0]
+            payload = _powershell_get_json(query, self.username, self.password)
+            values = payload.get("value") or []
+            if values:
+                view = values[0]
+                view_id_key = id_key
+                break
+        if not view:
+            raise CRMClientError(
+                f"View «{self.view_name}» در Viewهای شخصی یا سازمانی پیدا نشد یا کاربر دسترسی ندارد."
+            )
+        view["view_id"] = view.get(view_id_key)
         returned_type = str(view.get("returnedtypecode") or "").casefold()
         if returned_type not in {"annotation", "incident"}:
             raise CRMClientError("View انتخاب‌شده از نوع مورد (Case) یا Note نیست.")
@@ -605,22 +617,23 @@ class DynamicsCRMClient:
             notes=notes, tasks=tasks, cases=cases, unmatched_tasks=unmatched,
             notes_summary=summary, tasks_summary=summary,
         )
-        case_dates = [
-            parse_datetime(_value(row, "modifiedon"))
-            for row in (view_rows if returned_type == "incident" else [])
-            if _value(row, "modifiedon")
-        ]
+        case_dates = []
+        for row in (view_rows if returned_type == "incident" else []):
+            parsed = parse_datetime(_value(row, "modifiedon"))
+            if parsed is not None:
+                case_dates.append(parsed)
         note_dates = [n.note_date for n in notes if n.note_date]
-        task_dates = [
-            parse_datetime(_value(row, "modifiedon", "createdon"))
-            for row in expanded_tasks
-            if _value(row, "modifiedon", "createdon")
-        ]
+        task_dates = []
+        for row in expanded_tasks:
+            parsed = parse_datetime(_value(row, "modifiedon", "createdon"))
+            if parsed is not None:
+                task_dates.append(parsed)
         modified_dates = note_dates + task_dates + case_dates
         def watermark(values, fallback):
-            return _iso(max(values)) if values else _iso(fallback)
+            valid_values = [value for value in values if value is not None]
+            return _iso(max(valid_values)) if valid_values else _iso(fallback)
         return dataset, {
-            "view_name": self.view_name, "view_id": view.get("userqueryid"),
+            "view_name": self.view_name, "view_id": view.get("view_id"),
             "fetched_at": now, "row_count": len(rows), "api_root": self.api_root,
             "sync_mode": "incremental" if since else "full",
             "since": _iso(since),
