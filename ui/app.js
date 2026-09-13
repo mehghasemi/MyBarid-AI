@@ -655,7 +655,13 @@ function useFileSource() {
 function ensureCrmViewSelector() {
   const input = document.getElementById('crm-view-name');
   if (!input) return null;
-  if (input.tagName === 'SELECT') return input;
+  if (input.tagName === 'SELECT') {
+    if (!input.dataset.crmViewsInitialized) {
+      input.innerHTML = '<option value="">ابتدا فهرست Viewها را از CRM دریافت کنید</option>';
+      input.dataset.crmViewsInitialized = 'true';
+    }
+    return input;
+  }
   const select = document.createElement('select');
   select.id = input.id;
   select.className = input.className;
@@ -731,7 +737,38 @@ async function loadCrmSettings() {
   }
 }
 
+async function loadCrmViewsFromApplication() {
+  const select = ensureCrmViewSelector();
+  if (!select) return;
+  const current = select.value || '';
+  select.innerHTML = '<option value="">در حال دریافت فهرست Viewها...</option>';
+  const res = await api().get_crm_views({
+    base_url: document.getElementById('crm-base-url').value.trim(),
+    organization: document.getElementById('crm-organization').value.trim(),
+    api_version: 'v9.1',
+    view_name: current,
+  });
+  if (!res.ok) {
+    select.innerHTML = current
+      ? `<option value="${escapeHtml(current)}">${escapeHtml(current)} (ذخیره‌شده)</option>`
+      : '<option value="">View قابل‌دسترسی پیدا نشد</option>';
+    document.getElementById('crm-status').textContent = `دریافت Viewها ناموفق بود: ${res.error}`;
+    return;
+  }
+  select.innerHTML = res.views.length
+    ? res.views.map(v => `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name)} — ${escapeHtml(v.scope)}</option>`).join('')
+    : '<option value="">View قابل استفاده پیدا نشد</option>';
+  if (res.views.some(v => v.name === current)) select.value = current;
+  else if (res.views.length) select.value = res.views[0].name;
+  if (select.value) {
+    await api().save_crm_settings({ ...crmPayload(), view_name: select.value });
+    document.getElementById('crm-status').textContent = `View انتخاب‌شده ذخیره شد: ${select.value}`;
+  }
+}
+
 async function loadCrmViews() {
+  return loadCrmViewsFromApplication();
+  /* Legacy implementation retained below for compatibility with old builds. */
   const select = ensureCrmViewSelector();
   if (!select) return;
   const current = select.value || 'داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر';
@@ -756,7 +793,6 @@ async function loadCrmViews() {
     select.value = 'داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر';
   }
 }
-
 async function testCrmConnection() {
   const box = document.getElementById('crm-status');
   box.textContent = 'در حال آزمون اتصال...';

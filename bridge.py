@@ -210,7 +210,7 @@ class Api:
             "base_url": stored.get("base_url", DEFAULT_BASE_URL),
             "organization": stored.get("organization", DEFAULT_ORGANIZATION),
             "api_version": stored.get("api_version", DEFAULT_API_VERSION),
-            "view_name": stored.get("view_name") or DEFAULT_VIEW_NAME,
+            "view_name": stored.get("view_name") or "",
             "data_source": db.get_setting("data_source", "crm"),
             "last_snapshot": db.get_latest_crm_snapshot(),
         }
@@ -252,7 +252,7 @@ class Api:
             "base_url": str(payload.get("base_url") or DEFAULT_BASE_URL).rstrip("/"),
             "organization": str(payload.get("organization") or DEFAULT_ORGANIZATION).strip("/"),
             "api_version": str(payload.get("api_version") or DEFAULT_API_VERSION).strip("/"),
-            "view_name": str(payload.get("view_name") or DEFAULT_VIEW_NAME).strip(),
+            "view_name": str(payload.get("view_name") or "").strip(),
         }
         db.set_setting("crm_settings", settings)
         return {"ok": True, **settings}

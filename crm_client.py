@@ -34,6 +34,11 @@ DEFAULT_ORGANIZATION = "Main"
 DEFAULT_API_VERSION = "v9.1"
 DEFAULT_VIEW_NAME = "داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر"
 ACTIVITY_CASE_BATCH_SIZE = 200
+DEFAULT_VIEW_NAME = ""
+DEFAULT_VIEW_NAME_ALIASES = (
+    "داشبورد مدیریتی مورد های ثبت شده هلپدسک چهار ماه اخیر",
+    "داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر",
+)
 
 
 def _iso(value):
@@ -93,6 +98,16 @@ def _value(row: dict, *names: str):
         if name in row and row[name] not in (None, ""):
             return row[name]
     return None
+
+
+def _normalize_view_name(value: str) -> str:
+    """Normalize harmless Persian/Arabic spelling differences in CRM View names."""
+    import unicodedata
+
+    text = unicodedata.normalize("NFKC", str(value or ""))
+    text = text.replace("ي", "ی").replace("ى", "ی").replace("ك", "ک")
+    text = text.replace("\u200c", "").replace("\u200d", "")
+    return " ".join(text.split()).casefold()
 
 
 def _display(row: dict, *names: str):
@@ -381,24 +396,27 @@ class DynamicsCRMClient:
         return f"{self.base_url}/{self.organization}/api/data/{self.api_version}"
 
     def _get_user_view(self) -> dict:
-        escaped_name = quote(self.view_name)
-        searches = (
-            ("userqueries", "userqueryid"),
-            ("savedqueries", "savedqueryid"),
-        )
         view = None
         view_id_key = None
-        for entity, id_key in searches:
+        requested_normalized = _normalize_view_name(self.view_name)
+        if not requested_normalized:
+            raise CRMClientError(
+                "No CRM View is selected. Load the View list and select a View first."
+            )
+        for entity, id_key in (
+            ("userqueries", "userqueryid"),
+            ("savedqueries", "savedqueryid"),
+        ):
             query = (
                 f"{self.api_root}/{entity}?"
                 f"$select=name,{id_key},returnedtypecode,fetchxml"
-                f"&$filter=name%20eq%20'{escaped_name}'"
             )
-            payload = _powershell_get_json(query, self.username, self.password)
-            values = payload.get("value") or []
-            if values:
-                view = values[0]
-                view_id_key = id_key
+            for candidate in _paged_values(query, self.username, self.password):
+                if _normalize_view_name(candidate.get("name")) == requested_normalized:
+                    view = candidate
+                    view_id_key = id_key
+                    break
+            if view:
                 break
         if not view:
             raise CRMClientError(
