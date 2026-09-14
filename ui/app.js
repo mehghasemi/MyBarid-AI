@@ -665,9 +665,8 @@ function ensureCrmViewSelector() {
   const select = document.createElement('select');
   select.id = input.id;
   select.className = input.className;
-  const defaultView = 'داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر';
-  select.innerHTML = `<option value="${escapeHtml(defaultView)}">${escapeHtml(defaultView)} (پیش‌فرض)</option>`;
-  select.value = input.value || defaultView;
+  select.innerHTML = '<option value="">ابتدا فهرست Viewها را از CRM دریافت کنید</option>';
+  select.value = input.value || '';
   input.replaceWith(select);
   const status = document.getElementById('crm-status');
   if (status && !document.getElementById('crm-load-views')) {
@@ -768,7 +767,11 @@ async function loadCrmViewsFromApplication() {
 
 async function loadCrmViews() {
   return loadCrmViewsFromApplication();
-  /* Legacy implementation retained below for compatibility with old builds. */
+}
+
+/*
+async function loadCrmViewsLegacyDisabled() {
+  /* Legacy implementation retained below for compatibility with old builds.
   const select = ensureCrmViewSelector();
   if (!select) return;
   const current = select.value || 'داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر';
@@ -793,6 +796,8 @@ async function loadCrmViews() {
     select.value = 'داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر';
   }
 }
+*/
+
 async function testCrmConnection() {
   const box = document.getElementById('crm-status');
   box.textContent = 'در حال آزمون اتصال...';

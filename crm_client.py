@@ -32,13 +32,8 @@ CRM_REQUEST_TIMEOUT_SECONDS = 180
 CRM_PROCESS_TIMEOUT_SECONDS = CRM_REQUEST_TIMEOUT_SECONDS + 30
 DEFAULT_ORGANIZATION = "Main"
 DEFAULT_API_VERSION = "v9.1"
-DEFAULT_VIEW_NAME = "داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر"
 ACTIVITY_CASE_BATCH_SIZE = 200
 DEFAULT_VIEW_NAME = ""
-DEFAULT_VIEW_NAME_ALIASES = (
-    "داشبورد مدیریتی مورد های ثبت شده هلپدسک چهار ماه اخیر",
-    "داشبورد مدیریت مورد های ثبت شده هلپدسک چهار ماه اخیر",
-)
 
 
 def _iso(value):
