@@ -660,6 +660,10 @@ function ensureCrmViewSelector() {
       input.innerHTML = '<option value="">ابتدا فهرست Viewها را از CRM دریافت کنید</option>';
       input.dataset.crmViewsInitialized = 'true';
     }
+    if (!input.dataset.crmViewPersistenceBound) {
+      input.addEventListener('change', persistSelectedCrmView);
+      input.dataset.crmViewPersistenceBound = 'true';
+    }
     return input;
   }
   const select = document.createElement('select');
@@ -668,6 +672,8 @@ function ensureCrmViewSelector() {
   select.innerHTML = '<option value="">ابتدا فهرست Viewها را از CRM دریافت کنید</option>';
   select.value = input.value || '';
   input.replaceWith(select);
+  select.addEventListener('change', persistSelectedCrmView);
+  select.dataset.crmViewPersistenceBound = 'true';
   const status = document.getElementById('crm-status');
   if (status && !document.getElementById('crm-load-views')) {
     const button = document.createElement('button');
@@ -680,13 +686,34 @@ function ensureCrmViewSelector() {
   return select;
 }
 
+async function persistSelectedCrmView() {
+  const select = document.getElementById('crm-view-name');
+  if (!select || !select.value) return;
+  const result = await api().save_crm_settings({ ...crmPayload(), view_name: select.value });
+  const hint = document.getElementById('crm-selected-view-hint');
+  if (hint) hint.textContent = `View پیش‌فرض ذخیره‌شده: ${result.view_name || select.value}`;
+  const status = document.getElementById('crm-status');
+  if (status) status.textContent = `View پیش‌فرض ذخیره شد: ${result.view_name || select.value}`;
+}
+
 async function loadCrmSettings() {
   ensureCrmViewSelector();
   const s = await api().get_crm_settings();
   if (!s) return;
   document.getElementById('crm-base-url').value = s.base_url || '';
   document.getElementById('crm-organization').value = s.organization || '';
-  document.getElementById('crm-view-name').value = s.view_name || '';
+  const savedView = s.view_name || '';
+  const viewSelect = document.getElementById('crm-view-name');
+  if (viewSelect && savedView && !Array.from(viewSelect.options).some(o => o.value === savedView)) {
+    viewSelect.add(new Option(`${savedView} (ذخیره‌شده)`, savedView), 0);
+  }
+  if (viewSelect) viewSelect.value = savedView;
+  const selectedViewHint = document.getElementById('crm-selected-view-hint');
+  if (selectedViewHint) {
+    selectedViewHint.textContent = s.view_name
+      ? `View پیش‌فرض ذخیره‌شده: ${s.view_name}`
+      : 'هنوز View پیش‌فرض ذخیره نشده است.';
+  }
   setFileInputEnabled(s.data_source !== 'crm');
   if (s.last_snapshot) {
     const m = s.last_snapshot.metadata || {};
@@ -761,6 +788,8 @@ async function loadCrmViewsFromApplication() {
   else if (res.views.length) select.value = res.views[0].name;
   if (select.value) {
     await api().save_crm_settings({ ...crmPayload(), view_name: select.value });
+    const selectedViewHint = document.getElementById('crm-selected-view-hint');
+    if (selectedViewHint) selectedViewHint.textContent = `View پیش‌فرض ذخیره‌شده: ${select.value}`;
     document.getElementById('crm-status').textContent = `View انتخاب‌شده ذخیره شد: ${select.value}`;
   }
 }
