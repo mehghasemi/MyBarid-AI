@@ -1,5 +1,7 @@
 # اپلیکیشن ارزیابی کیفیت عملکرد کارشناسان CRM
 
+> مسیر توسعه فعال `D:\MyData\MyApp-AI\MyBarid-AI` و شاخه یکپارچه‌سازی `fix/crm-sync` است. جزئیات بازیابی نسخه‌های متفاوت و محدودیت‌های ادغام در `docs/repository-consolidation.md` ثبت شده‌اند.
+
 اپلیکیشن دسکتاپ ویندوزی برای تحلیل و مقایسه کیفیت ثبت اطلاعات در CRM و
 عملکرد کارشناسان خدمات پس از فروش بین دو بازه زمانی، بر پایه دو فایل
 Export شده از Dynamics CRM (Notes و Tasks).
@@ -141,7 +143,7 @@ app/
   bridge.py                لایه API پایتون↔جاوااسکریپت
   pipeline.py               هماهنگ‌کننده Load→Score→Compare
   data/        loader / mapper / validator / cleaner (Mapping ستون‌ها و اتصال Task↔Case)
-  analysis/    rules / scoring / experts / comparison / suspicious / data_quality / timeline
+  analysis/    rules / scoring / experts / suspicious / data_quality / timeline
   ai/          providers / prompts / schemas / analyzer  (لایه AI، کاملاً اختیاری)
   config/      default_criteria.json + criteria_config.py (معیارها، وزن‌ها، قابل توسعه)
   database/    db.py (SQLite برای تنظیمات/Cache + ذخیره امن کلید API با Windows DPAPI)

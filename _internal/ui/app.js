@@ -1,0 +1,1070 @@
+/* ------------------------------------------------------------------------
+   حالت کلی برنامه در سمت رابط کاربری
+------------------------------------------------------------------------ */
+const state = {
+  notesPath: null,
+  tasksPath: null,
+  datasetLoaded: false,
+  dateBounds: null,
+  analysisDone: false,
+  casesPage: 0,
+  casesPageSize: 25,
+  charts: {},
+  criteriaConfig: null,
+  currentExpert: null,
+  crmViews: [],
+};
+
+function api() { return window.pywebview.api; }
+
+/* ------------------------------------------------------------------------
+   ناوبری
+------------------------------------------------------------------------ */
+document.querySelectorAll('.nav-item').forEach(el => {
+  el.addEventListener('click', () => {
+    showPage(el.dataset.page);
+    loadPageData(el.dataset.page);
+  });
+});
+
+function showPage(name) {
+  const target = document.getElementById('page-' + name);
+  if (!target) {
+    console.warn('صفحه رابط پیدا نشد:', name);
+    name = 'periods';
+  }
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === name));
+  document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === 'page-' + name));
+}
+
+async function loadPageData(name) {
+  if (!state.analysisDone) return;
+  const loaders = {
+    dashboard: loadDashboard,
+    ranking: loadRanking,
+    cases: () => loadCasesTable(0),
+    suspicious: loadSuspicious,
+    'data-quality': loadDataQuality,
+    'mgmt-report': loadMgmtReport,
+  };
+  const loader = loaders[name];
+  if (!loader) return;
+  try { await loader(); } catch (e) { toast('بارگذاری این بخش انجام نشد: ' + e, 'error'); }
+}
+
+function toast(message, type) {
+  const c = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' ' + type : '');
+  el.textContent = message;
+  c.appendChild(el);
+  setTimeout(() => el.remove(), 4500);
+}
+
+function fmt(v, digits) {
+  if (v === null || v === undefined) return '—';
+  if (typeof v !== 'number') return v;
+  return v.toFixed(digits === undefined ? 1 : digits);
+}
+
+function deltaBadge(change) {
+  if (change === null || change === undefined) return '<span class="badge muted">—</span>';
+  if (change > 3) return `<span class="badge good">+${fmt(change)}</span>`;
+  if (change < -3) return `<span class="badge bad">${fmt(change)}</span>`;
+  return `<span class="badge warn">${fmt(change)}</span>`;
+}
+
+function scoreBadgeClass(score) {
+  if (score === null || score === undefined) return 'muted';
+  if (score >= 75) return 'good';
+  if (score >= 50) return 'warn';
+  return 'bad';
+}
+
+/* ------------------------------------------------------------------------
+   تبدیل تاریخ میلادی↔شمسی با استفاده از تقویم فارسی داخلیِ Intl
+   (توسط موتور Chromium/WebView2 به‌صورت بومی و دقیق پشتیبانی می‌شود؛
+   نسبت به فرمول‌های دستی قبلی، در مرز نوروز و سال‌های کبیسه خطا ندارد)
+------------------------------------------------------------------------ */
+const _jalaliFormatter = new Intl.DateTimeFormat('en-US-u-ca-persian', { year: 'numeric', month: 'numeric', day: 'numeric', timeZone: 'UTC' });
+
+function _jalaliPartsOf(utcDate) {
+  const parts = _jalaliFormatter.formatToParts(utcDate);
+  const o = {};
+  parts.forEach(p => { if (p.type !== 'literal' && p.type !== 'era') o[p.type] = parseInt(p.value, 10); });
+  return [o.year, o.month, o.day];
+}
+
+function gregorianToJalali(gy, gm, gd) {
+  return _jalaliPartsOf(new Date(Date.UTC(gy, gm - 1, gd)));
+}
+
+// جستجوی دودویی روی روزهای تقویم میلادی تا روزی که معادل شمسی آن دقیقاً jy/jm/jd باشد
+function jalaliToGregorian(jy, jm, jd) {
+  const target = jy * 10000 + jm * 100 + jd;
+  let loT = Date.UTC(jy + 620, 0, 1);
+  let hiT = Date.UTC(jy + 623, 11, 31);
+  while (loT < hiT) {
+    const midDay = loT + Math.floor(((hiT - loT) / 86400000) / 2) * 86400000;
+    const [py, pm, pd] = _jalaliPartsOf(new Date(midDay));
+    const val = py * 10000 + pm * 100 + pd;
+    if (val < target) loT = midDay + 86400000; else hiT = midDay;
+  }
+  const d = new Date(loT);
+  return [d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()];
+}
+
+function toShamsiStr(isoStr) {
+  if (!isoStr) return '—';
+  const d = new Date(isoStr);
+  const [jy, jm, jd] = gregorianToJalali(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${jy}/${String(jm).padStart(2, '0')}/${String(jd).padStart(2, '0')} ${hh}:${mm}`;
+}
+function toGregStr(isoStr) {
+  if (!isoStr) return '—';
+  const d = new Date(isoStr);
+  return d.toLocaleString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+function dateDual(isoStr) {
+  return `${toShamsiStr(isoStr)} <span style="color:var(--muted);font-size:11px">(${toGregStr(isoStr)})</span>`;
+}
+
+function daysInJalaliMonth(jy, jm) {
+  if (jm <= 6) return 31;
+  if (jm <= 11) return 30;
+  // اسفند: ۲۹ یا ۳۰ — با یافتن آخرین روزی که هنوز در همان ماه/سال شمسی است
+  for (const day of [30, 29]) {
+    const [gy, gm, gd] = jalaliToGregorian(jy, 12, day);
+    const [jy2, jm2, jd2] = gregorianToJalali(gy, gm, gd);
+    if (jy2 === jy && jm2 === 12 && jd2 === day) return day;
+  }
+  return 29;
+}
+
+const JALALI_MONTHS = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
+
+function buildJalaliPicker(containerId, initialISO) {
+  const container = document.getElementById(containerId);
+  const now = initialISO ? new Date(initialISO) : new Date();
+  const [jy, jm, jd] = gregorianToJalali(now.getFullYear(), now.getMonth() + 1, now.getDate());
+
+  const yearOptions = [];
+  for (let y = jy - 3; y <= jy + 1; y++) yearOptions.push(y);
+
+  container.innerHTML = `
+    <div style="display:flex;gap:5px">
+      <select class="jp-year" style="flex:1.3">${yearOptions.map(y => `<option value="${y}" ${y === jy ? 'selected' : ''}>${y}</option>`).join('')}</select>
+      <select class="jp-month" style="flex:1.6">${JALALI_MONTHS.map((m, i) => `<option value="${i + 1}" ${i + 1 === jm ? 'selected' : ''}>${m}</option>`).join('')}</select>
+      <select class="jp-day" style="flex:1"></select>
+    </div>`;
+
+  const daySelect = container.querySelector('.jp-day');
+  function refreshDays() {
+    const y = parseInt(container.querySelector('.jp-year').value);
+    const m = parseInt(container.querySelector('.jp-month').value);
+    const maxDay = daysInJalaliMonth(y, m);
+    const currentVal = parseInt(daySelect.value) || jd;
+    daySelect.innerHTML = Array.from({ length: maxDay }, (_, i) => i + 1)
+      .map(d => `<option value="${d}" ${d === Math.min(currentVal, maxDay) ? 'selected' : ''}>${d}</option>`).join('');
+  }
+  refreshDays();
+  container.querySelector('.jp-year').addEventListener('change', refreshDays);
+  container.querySelector('.jp-month').addEventListener('change', refreshDays);
+}
+
+function getJalaliPickerISO(containerId) {
+  const c = document.getElementById(containerId);
+  const jy = parseInt(c.querySelector('.jp-year').value);
+  const jm = parseInt(c.querySelector('.jp-month').value);
+  const jd = parseInt(c.querySelector('.jp-day').value);
+  const [gy, gm, gd] = jalaliToGregorian(jy, jm, jd);
+  const pad = n => String(n).padStart(2, '0');
+  // فقط تاریخ (بدون ساعت) ارسال می‌شود؛ سرور خودش ابتدا/انتهای روز را در نظر می‌گیرد
+  return `${gy}-${pad(gm)}-${pad(gd)}`;
+}
+
+/* ------------------------------------------------------------------------
+   Upload
+------------------------------------------------------------------------ */
+/* Local file input removed. */
+
+/* ------------------------------------------------------------------------
+   Periods & Run
+------------------------------------------------------------------------ */
+async function runAnalysis() {
+  if (!state.datasetLoaded) { toast('هنوز داده‌ای از CRM در حافظه برنامه بارگذاری نشده است. ابتدا داده CRM را دریافت کنید.', 'error'); return; }
+  const p1s = getJalaliPickerISO('p1-start-picker'), p1e = getJalaliPickerISO('p1-end-picker');
+  const expertGroup = document.getElementById('run-expert-group').value || null;
+
+  document.getElementById('btn-run').disabled = true;
+  document.getElementById('progress-area').style.display = 'block';
+  document.getElementById('run-result').innerHTML = '';
+
+  const res = await api().start_analysis(p1s, p1e, expertGroup);
+  if (!res.ok) {
+    toast(res.error, 'error');
+    document.getElementById('btn-run').disabled = false;
+    return;
+  }
+  pollStatus();
+}
+
+async function pollStatus() {
+  const status = await api().get_status();
+  const total = status.total || 1;
+  const pct = status.total ? Math.round((status.current / status.total) * 100) : 0;
+  document.getElementById('progress-label').textContent = `${status.stage || ''} ${status.total ? `(${status.current}/${status.total})` : ''}`;
+  document.getElementById('progress-fill').style.width = pct + '%';
+
+  if (status.error) {
+    document.getElementById('run-result').innerHTML = `<div class="err-box">${status.error}</div>`;
+    document.getElementById('btn-run').disabled = false;
+    return;
+  }
+  if (status.running) {
+    setTimeout(pollStatus, 400);
+    return;
+  }
+  if (status.done) {
+    state.analysisDone = true;
+    document.getElementById('run-result').innerHTML = `<div class="ok-box">تحلیل با موفقیت انجام شد.</div>`;
+    document.getElementById('btn-run').disabled = false;
+    refreshAllReports();
+  }
+}
+
+async function refreshAllReports() {
+  await Promise.all([
+    loadDashboard(), loadRanking(), loadSuspicious(),
+    loadDataQuality(), loadMgmtReport(), loadCasesTable(0),
+  ]);
+}
+
+/* ------------------------------------------------------------------------
+   Criteria
+------------------------------------------------------------------------ */
+async function loadCriteria() {
+  let cfg;
+  try {
+    cfg = await api().get_criteria();
+  } catch (e) {
+    toast('بارگذاری معیارها ناموفق بود: ' + e, 'error');
+    return;
+  }
+  state.criteriaConfig = cfg;
+  document.getElementById('ratio-objective').value = cfg.objective_ai_ratio.objective;
+  document.getElementById('ratio-ai').value = cfg.objective_ai_ratio.ai;
+  renderCriteria();
+}
+
+function renderCriteria() {
+  const cfg = state.criteriaConfig;
+  if (!cfg) return;
+  const box = document.getElementById('criteria-list');
+  box.innerHTML = '';
+
+  cfg.categories.forEach(cat => {
+    const active = cat.criteria.filter(c => c.active);
+    const inactive = cat.criteria.filter(c => !c.active);
+
+    const catDiv = document.createElement('div');
+    catDiv.className = 'card criteria-cat';
+
+    const activeChips = active.map(c => `
+      <span class="crit-chip ${c.evaluation_type === 'AI' ? 'ai-type' : ''}" title="${escapeHtml(c.description_fa)}">
+        ${c.name_fa} (<span class="crit-weight" onclick="editCriterionWeight('${c.id}')">${fmtWeight(c.weight)}</span> امتیاز)
+        <button class="crit-x" title="حذف از معیارهای فعال" onclick="onCriterionChange('${c.id}', false)">×</button>
+      </span>`).join('');
+
+    const inactiveChips = inactive.map(c => `
+      <span class="crit-chip-inactive" title="${escapeHtml(c.description_fa)}" onclick="onCriterionChange('${c.id}', true)">
+        + ${c.name_fa}
+      </span>`).join('');
+
+    catDiv.innerHTML = `
+      <div class="crit-cat-header">
+        <h3 style="margin:0">${cat.name_fa}</h3>
+        <span class="cat-hint">${active.length} معیار فعال از ${cat.criteria.length}</span>
+      </div>
+      <div class="crit-chip-wrap">${activeChips || '<span style="color:var(--muted);font-size:12px">هیچ معیار فعالی در این دسته نیست.</span>'}</div>
+      ${inactive.length ? `<div class="crit-inactive-wrap">${inactiveChips}</div>` : ''}
+    `;
+    box.appendChild(catDiv);
+  });
+}
+
+function fmtWeight(w) {
+  return (Math.round(w * 10) / 10).toString();
+}
+
+async function editCriterionWeight(id) {
+  const cfg = state.criteriaConfig;
+  let crit = null;
+  cfg.categories.forEach(cat => cat.criteria.forEach(c => { if (c.id === id) crit = c; }));
+  if (!crit) return;
+  const newVal = prompt(`امتیاز جدید برای «${crit.name_fa}»:`, fmtWeight(crit.weight));
+  if (newVal === null) return;
+  const num = parseFloat(newVal);
+  if (isNaN(num) || num < 0) { toast('عدد وارد شده معتبر نیست', 'error'); return; }
+  crit.weight = num;
+  await api().update_criterion(id, num, true);
+  renderCriteria();
+}
+
+async function onCriterionChange(id, active) {
+  const cfg = state.criteriaConfig;
+  let crit = null;
+  cfg.categories.forEach(cat => cat.criteria.forEach(c => { if (c.id === id) crit = c; }));
+  if (!crit) return;
+  crit.active = active;
+  await api().update_criterion(id, crit.weight, active);
+  renderCriteria();
+}
+
+async function saveRatio() {
+  const o = parseFloat(document.getElementById('ratio-objective').value);
+  const a = parseFloat(document.getElementById('ratio-ai').value);
+  const res = await api().update_ratio(o, a);
+  if (res.ok) toast('نسبت ذخیره شد', 'success'); else toast(res.error, 'error');
+}
+
+async function resetCriteria() {
+  await api().reset_criteria();
+  loadCriteria();
+  toast('به تنظیمات پیش‌فرض بازگشت');
+}
+
+/* ------------------------------------------------------------------------
+   AI Settings
+------------------------------------------------------------------------ */
+async function loadAiSettings() {
+  let s;
+  try {
+    s = await api().get_ai_settings();
+  } catch (e) {
+    toast('بارگذاری تنظیمات AI ناموفق بود: ' + e, 'error');
+    return;
+  }
+  document.getElementById('ai-enabled').value = String(s.enabled);
+  document.getElementById('ai-provider').value = s.provider;
+  document.getElementById('ai-model').value = s.model;
+  document.getElementById('ai-base-url').value = s.base_url;
+  document.getElementById('ai-temperature').value = s.temperature;
+  document.getElementById('ai-max-tokens').value = s.max_tokens;
+  document.getElementById('ai-batch-size').value = s.batch_size;
+  document.getElementById('ai-key-masked').textContent = s.has_key ? `(کلید ذخیره‌شده: ${s.api_key_masked})` : '(کلیدی ذخیره نشده)';
+}
+
+async function saveAiSettings() {
+  const payload = {
+    enabled: document.getElementById('ai-enabled').value === 'true',
+    provider: document.getElementById('ai-provider').value,
+    model: document.getElementById('ai-model').value,
+    base_url: document.getElementById('ai-base-url').value,
+    temperature: parseFloat(document.getElementById('ai-temperature').value),
+    max_tokens: parseInt(document.getElementById('ai-max-tokens').value),
+    batch_size: parseInt(document.getElementById('ai-batch-size').value),
+  };
+  const key = document.getElementById('ai-api-key').value;
+  if (key) payload.api_key = key;
+  const res = await api().save_ai_settings(payload);
+  if (res.ok) { toast('تنظیمات AI ذخیره شد', 'success'); document.getElementById('ai-api-key').value = ''; loadAiSettings(); }
+}
+
+async function testAi() {
+  const box = document.getElementById('ai-test-result');
+  box.innerHTML = '<div class="warn-box">در حال تست...</div>';
+  const res = await api().test_ai_connection();
+  box.innerHTML = res.ok ? `<div class="ok-box">${res.message}</div>` : `<div class="err-box">${res.message}</div>`;
+}
+
+async function deleteAiKey() {
+  await api().delete_ai_key();
+  loadAiSettings();
+  toast('کلید حذف شد');
+}
+
+/* ------------------------------------------------------------------------
+   Dashboard
+------------------------------------------------------------------------ */
+async function loadDashboard() {
+  const d = await api().get_dashboard();
+  if (!d.ok) return;
+  document.getElementById('dashboard-empty').style.display = 'none';
+  document.getElementById('dashboard-content').style.display = 'block';
+
+  const kpi = (label, value, extra) => `
+    <div class="card kpi"><div class="label">${label}</div><div class="value ${typeof value === 'string' && value.length > 6 ? 'small' : ''}">${value}</div>${extra || ''}</div>`;
+
+  document.getElementById('dashboard-kpis').innerHTML = [
+    kpi(d.unit === 'task' ? 'تعداد Task' : 'تعداد مورد', d.total_cases),
+    kpi('تعداد کارشناسان', d.total_experts),
+    kpi('تعداد Note', d.total_notes),
+    kpi('تعداد Task', d.total_tasks),
+    kpi('شاخص سلامت داده', fmt(d.data_quality) + '%'),
+    kpi('score', fmt(d.score)),
+  ].join('');
+}
+
+function drawChart(canvasId, type, data) {
+  const ctx = document.getElementById(canvasId);
+  if (state.charts[canvasId]) state.charts[canvasId].destroy();
+  state.charts[canvasId] = new Chart(ctx, {
+    type, data,
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { font: { family: 'Vazirmatn' } } } },
+      scales: { y: { beginAtZero: true, max: 100, ticks: { font: { family: 'Vazirmatn' } } }, x: { ticks: { font: { family: 'Vazirmatn' } } } },
+    },
+  });
+}
+
+/* ------------------------------------------------------------------------
+------------------------------------------------------------------------ */
+/* ------------------------------------------------------------------------
+   Ranking
+------------------------------------------------------------------------ */
+async function loadRanking() {
+  const r = await api().get_ranking();
+  if (!r.ok) return;
+  document.getElementById('ranking-empty').style.display = 'none';
+  document.getElementById('ranking-content').style.display = 'block';
+  document.getElementById('ranking-body').innerHTML = r.rows.map(row => `
+    <tr class="clickable" onclick="showExpertDetail('${row.expert.replace(/'/g, "\\'")}')">
+      <td>${row.expert}</td><td>${fmt(row.score)}</td><td>${row.cases}</td>
+      <td>${deltaBadge(row.change)}</td><td><span class="badge ${statusBadgeClass(row.status)}">${row.status}</span></td>
+      <td>${row.cases}</td>
+    </tr>`).join('');
+}
+
+function statusBadgeClass(status) {
+  if (status.includes('بهبود')) return 'good';
+  if (status.includes('افت')) return 'bad';
+  if (status === 'ثابت') return 'warn';
+  return 'muted';
+}
+
+function strengthCard(s, isPositive) {
+  const cls = isPositive ? 'good' : 'bad';
+  const cases = s.sample_cases.map(c => `<span class="chip" title="${escapeHtml(c.evidence || '')}">${c.case_number || c.case_key} (${fmt(c.score, 0)})</span>`).join('');
+  return `
+    <div class="card" style="padding:10px 12px;margin-top:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <b style="font-size:12.5px">${s.criterion}</b>
+        <span class="badge ${cls}">${fmt(s.avg_score)}</span>
+      </div>
+      <div style="font-size:11.5px;color:var(--muted);margin:4px 0">میانگین در ${s.count} مورد بررسی‌شده (دسته: ${s.category})</div>
+      <div class="chip-list">${cases}</div>
+    </div>`;
+}
+
+async function showExpertDetail(expert) {
+  const d = await api().get_expert_detail(expert);
+  if (!d.ok) return;
+  state.currentExpert = expert;
+  document.getElementById('expert-export-result').innerHTML = '';
+  document.getElementById('expert-detail-panel').style.display = 'block';
+  document.getElementById('expert-detail-title').textContent = `کارشناس: ${expert}`;
+
+  const statCard = (title, s) => {
+    if (!s) return `<div class="card"><h3>${title}</h3><p style="color:var(--muted)">داده‌ای در این دوره وجود ندارد.</p></div>`;
+    return `<div class="card"><h3>${title}</h3>
+      <table>
+        <tr><td>تعداد مورد</td><td>${s.case_count}</td></tr>
+        <tr><td>تعداد Note</td><td>${s.note_count}</td></tr>
+        <tr><td>تعداد Task</td><td>${s.task_count}</td></tr>
+        <tr><td>Objective</td><td>${fmt(s.avg_objective)}</td></tr>
+        <tr><td>AI</td><td>${fmt(s.avg_ai)}</td></tr>
+        <tr><td>Final</td><td><b>${fmt(s.avg_final)}</b></td></tr>
+      </table>
+      ${s.weak_criteria.length ? `<div style="margin-top:8px"><b style="font-size:12px">ضعف‌های تکرارشونده:</b> <div class="chip-list" style="margin-top:6px">${s.weak_criteria.map(w => `<span class="chip">${w[0]} (${w[1]})</span>`).join('')}</div></div>` : ''}
+      ${s.strong_criteria.length ? `<div style="margin-top:8px"><b style="font-size:12px">نقاط قوت:</b> <div class="chip-list" style="margin-top:6px">${s.strong_criteria.map(w => `<span class="chip">${w[0]} (${w[1]})</span>`).join('')}</div></div>` : ''}
+      </div>`;
+  };
+
+  document.getElementById('expert-detail-stats').innerHTML = statCard('current', d.current);
+
+  const fbBox = document.getElementById('expert-feedback-box');
+  if (d.feedback && (d.feedback.strengths.length || d.feedback.weaknesses.length)) {
+    const fb = d.feedback;
+    fbBox.style.display = 'block';
+    fbBox.innerHTML = `
+      <h3>گزارش عملکرد فعلی و بازخورد</h3>
+      <div class="grid cols-2">
+        <div>
+          <b style="font-size:12.5px">نقاط قوت</b>
+          ${fb.strengths.map(s => strengthCard(s, true)).join('') || '<p style="color:var(--muted);font-size:12px">داده کافی برای شناسایی نقطه قوت مستند وجود ندارد.</p>'}
+        </div>
+        <div>
+          <b style="font-size:12.5px">نقاط قابل بهبود</b>
+          ${fb.weaknesses.map(s => strengthCard(s, false)).join('') || '<p style="color:var(--muted);font-size:12px">ضعف قابل توجهی شناسایی نشد.</p>'}
+        </div>
+      </div>
+      ${fb.action_plan.length ? `
+        <div style="margin-top:14px">
+          <b style="font-size:12.5px">برنامه بهبود پیشنهادی</b>
+          <table style="margin-top:6px"><thead><tr><th>اولویت</th><th>تمرکز</th><th>دسته</th><th>هدف</th></tr></thead>
+          <tbody>${fb.action_plan.map(a => `<tr><td>${a.priority}</td><td>${a.focus}</td><td>${a.category}</td><td>${a.target}</td></tr>`).join('')}</tbody></table>
+        </div>` : ''}
+    `;
+  } else {
+    fbBox.style.display = 'none';
+  }
+
+  document.getElementById('expert-cases-body').innerHTML = d.cases.map(c => `
+    <tr class="clickable" onclick="openCaseDetail('${c.case_key.replace(/'/g, "\\'")}')">
+      <td>${c.case_number || '—'}</td><td>${c.case_title || '—'}</td>
+      <td><span class="badge ${scoreBadgeClass(c.final_score)}">${fmt(c.final_score)}</span></td>
+    </tr>`).join('');
+}
+
+/* ------------------------------------------------------------------------
+   Expert Groups
+------------------------------------------------------------------------ */
+let allDetectedExperts = [];
+let editingGroupName = null; // اگر null باشد یعنی حالت «ساخت گروه جدید»
+
+async function loadExpertChecklist() {
+  const res = await api().get_detected_experts();
+  allDetectedExperts = (res.ok && res.experts) ? res.experts : [];
+  renderExpertChecklist(allDetectedExperts);
+}
+
+function renderExpertChecklist(experts, checkedSet) {
+  const box = document.getElementById('expert-checklist');
+  checkedSet = checkedSet || new Set(Array.from(document.querySelectorAll('.expert-check:checked')).map(c => c.value));
+  if (!experts.length) {
+    box.innerHTML = '<span style="color:var(--muted);font-size:12.5px">کارشناسی با این مشخصات پیدا نشد.</span>';
+    return;
+  }
+  box.innerHTML = experts.map(e => `
+    <label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12.5px">
+      <input type="checkbox" value="${escapeHtml(e)}" class="expert-check" ${checkedSet.has(e) ? 'checked' : ''}> ${e}
+    </label>`).join('');
+}
+
+function filterExpertChecklist() {
+  const q = document.getElementById('expert-search-box').value.trim();
+  const checkedSet = new Set(Array.from(document.querySelectorAll('.expert-check:checked')).map(c => c.value));
+  const filtered = q ? allDetectedExperts.filter(e => e.includes(q)) : allDetectedExperts;
+  renderExpertChecklist(filtered, checkedSet);
+}
+
+async function saveNewExpertGroup() {
+  const name = document.getElementById('new-group-name').value.trim();
+  const unit = document.getElementById('new-group-unit').value;
+  const checked = Array.from(document.querySelectorAll('.expert-check:checked')).map(c => c.value);
+  if (!name) { toast('نام گروه را وارد کنید', 'error'); return; }
+  if (!checked.length) { toast('حداقل یک کارشناس انتخاب کنید', 'error'); return; }
+  const res = await api().save_expert_group(name, checked, unit);
+  if (!res.ok) { toast(res.error, 'error'); return; }
+  toast(editingGroupName ? 'گروه به‌روزرسانی شد' : 'گروه ذخیره شد', 'success');
+  cancelEditGroup();
+  loadExpertGroupsSettings();
+}
+
+function editExpertGroup(name, unit, experts) {
+  editingGroupName = name;
+  document.getElementById('group-form-title').textContent = `ویرایش گروه: ${name}`;
+  document.getElementById('new-group-name').value = name;
+  document.getElementById('new-group-name').disabled = true;
+  document.getElementById('new-group-unit').value = unit;
+  document.getElementById('expert-search-box').value = '';
+  renderExpertChecklist(allDetectedExperts, new Set(experts));
+  document.getElementById('cancel-edit-group-btn').style.display = 'inline-flex';
+  document.getElementById('group-form-title').scrollIntoView({ behavior: 'smooth' });
+}
+
+function cancelEditGroup() {
+  editingGroupName = null;
+  document.getElementById('group-form-title').textContent = 'ساخت گروه جدید';
+  document.getElementById('new-group-name').value = '';
+  document.getElementById('new-group-name').disabled = false;
+  document.getElementById('new-group-unit').value = 'case';
+  document.getElementById('expert-search-box').value = '';
+  document.getElementById('cancel-edit-group-btn').style.display = 'none';
+  renderExpertChecklist(allDetectedExperts, new Set());
+}
+
+async function deleteExpertGroup(name) {
+  await api().delete_expert_group(name);
+  loadExpertGroupsSettings();
+  toast('گروه حذف شد');
+}
+
+async function loadExpertGroupsSettings() {
+  const res = await api().get_expert_groups();
+  const groups = res.ok ? res.groups : {};
+  const listBox = document.getElementById('expert-groups-list');
+  const names = Object.keys(groups);
+  if (listBox) {
+    listBox.innerHTML = names.length ? names.map(name => {
+      const g = groups[name];
+      const unitLabel = g.review_unit === 'task' ? 'بر اساس Task' : 'بر اساس مورد';
+      return `
+      <div class="card" style="padding:12px 14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div><b style="font-size:13px">${escapeHtml(name)}</b> <span class="badge muted">${unitLabel}</span></div>
+          <div>
+            <button class="btn ghost" onclick='editExpertGroup(${JSON.stringify(name)}, ${JSON.stringify(g.review_unit)}, ${JSON.stringify(g.experts)})'>ویرایش</button>
+            <button class="btn ghost" onclick="deleteExpertGroup('${name.replace(/'/g, "\\'")}')">حذف گروه</button>
+          </div>
+        </div>
+        <div class="chip-list">${g.experts.map(e => `<span class="chip">${escapeHtml(e)}</span>`).join('')}</div>
+      </div>`;
+    }).join('') : '<span style="color:var(--muted);font-size:12.5px">هنوز گروهی ساخته نشده است.</span>';
+  }
+  const select = document.getElementById('run-expert-group');
+  if (select) {
+    const current = select.value;
+    select.innerHTML = '<option value="">همه کارشناسان</option>' +
+      names.map(n => `<option value="${escapeHtml(n)}" data-unit="${groups[n].review_unit}">${escapeHtml(n)} (${groups[n].review_unit === 'task' ? 'Task' : 'مورد'})</option>`).join('');
+    if (names.includes(current)) select.value = current;
+  }
+}
+
+/* --------------------------------------------------------- Default groups */
+async function loadDefaultGroupSuggestions() {
+  const box = document.getElementById('default-groups-suggestions');
+  if (!state.datasetLoaded) { toast('هنوز داده‌ای از CRM در حافظه برنامه بارگذاری نشده است. ابتدا داده CRM را دریافت کنید.', 'error'); return; }
+  box.innerHTML = '<div class="warn-box">در حال بررسی تطبیق نام‌ها...</div>';
+  const res = await api().suggest_default_groups();
+  if (!res.ok) { box.innerHTML = `<div class="err-box">${res.error}</div>`; return; }
+
+  const groupBlocks = Object.entries(res.suggestions).map(([groupName, data]) => {
+    const rows = data.entries.map((e, i) => {
+      const fieldId = `sugg-${groupName}-${i}`;
+      let control;
+      if (e.status === 'matched') {
+        control = `<span class="badge good">${e.matches[0]}</span><input type="hidden" id="${fieldId}" value="${escapeHtml(e.matches[0])}">`;
+      } else if (e.status === 'ambiguous') {
+        control = `<select id="${fieldId}">${e.matches.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('')}</select>`;
+      } else {
+        control = `<span class="badge bad">پیدا نشد</span><input type="hidden" id="${fieldId}" value="">`;
+      }
+      return `<div class="suggestion-row"><span class="target">${escapeHtml(e.target)}</span>${control}</div>`;
+    }).join('');
+    return `
+      <div class="card" style="margin-bottom:12px">
+        <h3>${escapeHtml(groupName)} <span class="badge muted">${data.review_unit === 'task' ? 'بر اساس Task' : 'بر اساس مورد'}</span></h3>
+        ${rows}
+      </div>`;
+  }).join('');
+
+  box.innerHTML = groupBlocks + `<button class="btn primary" onclick='confirmDefaultGroups(${JSON.stringify(res.suggestions)})'>ایجاد این گروه‌ها</button>`;
+}
+
+async function confirmDefaultGroups(suggestions) {
+  const selections = {};
+  for (const [groupName, data] of Object.entries(suggestions)) {
+    const experts = [];
+    data.entries.forEach((e, i) => {
+      const el = document.getElementById(`sugg-${groupName}-${i}`);
+      const val = el ? el.value : '';
+      if (val) experts.push(val);
+    });
+    selections[groupName] = { review_unit: data.review_unit, experts };
+  }
+  const res = await api().create_default_groups(selections);
+  if (res.ok) {
+    toast(`گروه‌های ${res.created.join('، ')} ایجاد شدند`, 'success');
+    document.getElementById('default-groups-suggestions').innerHTML = '';
+    loadExpertGroupsSettings();
+  } else {
+    toast(res.error || 'خطا در ایجاد گروه‌ها', 'error');
+  }
+}
+
+/* --------------------------------------------------- Export/Import settings */
+async function exportSettings() {
+  const path = await api().pick_save_path('تنظیمات-ارزیابی-CRM.json');
+  if (!path) return;
+  const res = await api().export_settings(path);
+  document.getElementById('settings-io-result').innerHTML = res.ok
+    ? `<div class="ok-box">تنظیمات در ${res.path} ذخیره شد.</div>` : `<div class="err-box">${res.error}</div>`;
+}
+
+async function importSettings() {
+  const path = await api().pick_file();
+  if (!path) return;
+  const mode = document.getElementById('import-mode').value;
+  const res = await api().import_settings(path, mode);
+  const box = document.getElementById('settings-io-result');
+  if (!res.ok) { box.innerHTML = `<div class="err-box">${res.error}</div>`; return; }
+  box.innerHTML = `<div class="ok-box">تنظیمات وارد شد. گروه‌های وارد‌شده: ${res.imported_groups.join('، ') || 'هیچ‌کدام'}.<br>${res.note}</div>`;
+  loadCriteria();
+  loadAiSettings();
+  loadExpertGroupsSettings();
+}
+
+
+/* ------------------------------------------------------------------------
+   Cases table + detail
+------------------------------------------------------------------------ */
+async function loadCasesTable(page) {
+  state.casesPage = page;
+  const expertFilter = document.getElementById('cases-expert-filter').value || null;
+  const statusSelect = document.getElementById('cases-status-filter');
+  const statusFilter = Array.from(statusSelect.selectedOptions).map(o => o.value).filter(Boolean);
+  const numberQuery = document.getElementById('cases-number-search').value.trim() || null;
+  const res = await api().get_cases_table(page, state.casesPageSize, expertFilter,
+    statusFilter.length ? statusFilter : null, numberQuery);
+  if (!res.ok) return;
+  document.getElementById('cases-empty').style.display = 'none';
+  document.getElementById('cases-content').style.display = 'block';
+
+  // پر کردن گزینه‌های فیلتر (فقط اگر قبلاً پر نشده یا دوره عوض شده)
+  fillFilterOptions('cases-expert-filter', res.experts, expertFilter);
+  fillMultiFilterOptions('cases-status-filter', res.status_reasons, statusFilter);
+
+  const isTask = res.unit === 'task';
+  document.getElementById('cases-table-head').innerHTML = isTask
+    ? '<tr><th>شماره Task</th><th>عنوان</th><th>کارشناس</th><th colspan="2">—</th><th>Objective</th><th>AI</th><th>Final</th></tr>'
+    : '<tr><th>شماره مورد</th><th>عنوان</th><th>کارشناس</th><th>Note</th><th>Task</th><th>Objective</th><th>AI</th><th>Final</th></tr>';
+
+  document.getElementById('cases-table-body').innerHTML = res.rows.map(r => `
+    <tr class="clickable" onclick="openCaseDetail('${r.case_key.replace(/'/g, "\\'")}','${period}')">
+      <td>${r.case_number || '—'}</td><td>${r.case_title || '—'}</td><td>${r.expert}</td>
+      ${isTask ? '<td colspan="2">—</td>' : `<td>${r.notes}</td><td>${r.tasks}</td>`}
+      <td>${fmt(r.objective_score)}</td><td>${fmt(r.ai_score)}</td>
+      <td><span class="badge ${scoreBadgeClass(r.final_score)}">${fmt(r.final_score)}</span></td>
+    </tr>`).join('');
+  const start = page * state.casesPageSize;
+  document.getElementById('cases-page-info').textContent =
+    `نمایش ${res.total ? start + 1 : 0}-${Math.min(start + state.casesPageSize, res.total)} از ${res.total}`;
+}
+
+function fillFilterOptions(selectId, options, currentValue) {
+  const select = document.getElementById(selectId);
+  const existing = Array.from(select.options).map(o => o.value).slice(1).sort().join(',');
+  const incoming = (options || []).slice().sort().join(',');
+  if (existing === incoming) { select.value = currentValue || ''; return; }
+  const placeholder = select.options[0].outerHTML;
+  select.innerHTML = placeholder + (options || []).map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
+  select.value = currentValue || '';
+}
+
+function fillMultiFilterOptions(selectId, options, currentValues) {
+  const select = document.getElementById(selectId);
+  const existing = Array.from(select.options).map(o => o.value).sort().join(',');
+  const incoming = (options || []).slice().sort().join(',');
+  if (existing !== incoming) {
+    select.innerHTML = (options || []).map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
+  }
+  const set = new Set(currentValues || []);
+  Array.from(select.options).forEach(o => { o.selected = set.has(o.value); });
+}
+
+function expandMultiSelect(e) {
+  e.target.classList.add('expanded');
+  e.target.size = Math.min(8, Math.max(4, e.target.options.length));
+}
+function collapseMultiSelect(e) {
+  e.target.classList.remove('expanded');
+  e.target.size = 1;
+}
+
+let casesSearchTimer = null;
+function debouncedCasesSearch() {
+  clearTimeout(casesSearchTimer);
+  casesSearchTimer = setTimeout(() => loadCasesTable(0), 350);
+}
+
+function filterSuspiciousTable() {
+  const q = document.getElementById('suspicious-number-search').value.trim().toLowerCase();
+  document.querySelectorAll('#suspicious-body tr').forEach(tr => {
+    const num = (tr.dataset.caseNumber || '').toLowerCase();
+    tr.style.display = (!q || num.includes(q)) ? '' : 'none';
+  });
+}
+
+function casesPrev() { if (state.casesPage > 0) loadCasesTable(state.casesPage - 1); }
+function casesNext() { loadCasesTable(state.casesPage + 1); }
+
+async function openCaseDetail(caseKey, period) {
+  const d = await api().get_case_detail(caseKey);
+  if (!d.ok) { toast(d.error || 'خطا در بارگذاری مورد', 'error'); return; }
+  document.getElementById('case-modal-overlay').style.display = 'flex';
+  document.getElementById('case-detail-title').textContent = `${d.case_number || ''} — ${d.case_title || ''}`;
+  document.getElementById('case-detail-meta').innerHTML =
+    `مشتری: ${d.customer || '—'} | Owner: ${d.owner || '—'} | سرویس: ${d.service || '—'} | وضعیت: ${d.status || '—'} / ${d.status_reason || ''}`;
+
+  const scenarioBox = document.getElementById('case-detail-scenario-desc');
+  let scenarioHtml = '';
+  if (d.scenario && d.scenario.trim()) {
+    scenarioHtml += `<div class="scenario-box"><span class="label">سناریوی وقوع (Scenario)</span>${escapeHtml(d.scenario)}</div>`;
+  }
+  if (d.case_description && d.case_description.trim()) {
+    scenarioHtml += `<div class="scenario-box"><span class="label">شرح مورد (Description)</span>${escapeHtml(d.case_description)}</div>`;
+  }
+  scenarioBox.innerHTML = scenarioHtml;
+
+  document.getElementById('case-timeline').innerHTML = d.timeline.map(ev => `
+    <div class="timeline-item ${ev.role.includes('مشتری') ? 'customer' : ''}">
+      <div class="meta">${dateDual(ev.date)} — ${ev.role} (${ev.author}) — ${ev.type === 'note' ? 'Note' : 'Task'}</div>
+      <div class="text">${escapeHtml(ev.text)}</div>
+    </div>`).join('') || '<p style="color:var(--muted)">رویداد دارای تاریخ معتبر ثبت نشده است.</p>';
+
+  if (d.breakdown) {
+    document.getElementById('case-score-summary').innerHTML = [
+      ['Objective', d.breakdown.objective_score], ['AI', d.breakdown.ai_score], ['Final', d.breakdown.final_score],
+      ['AI استفاده شده؟', d.breakdown.ai_used ? 'بله' : 'خیر'],
+    ].map(([l, v]) => `<div class="card kpi"><div class="label">${l}</div><div class="value small">${typeof v === 'number' ? fmt(v) : v}</div></div>`).join('');
+
+    document.getElementById('case-breakdown-body').innerHTML = d.breakdown.criteria.map(c => `
+      <tr><td>${c.name_fa}</td><td>${c.category}</td><td><span class="type-tag">${c.type}</span></td>
+        <td>${c.score === null ? '<span class="badge muted">N/A</span>' : `<span class="badge ${scoreBadgeClass(c.score)}">${fmt(c.score, 0)}</span>`}</td>
+        <td style="font-size:12px;color:var(--muted)">${escapeHtml(c.evidence || '')}</td></tr>`).join('');
+  } else {
+    document.getElementById('case-score-summary').innerHTML = '';
+    document.getElementById('case-breakdown-body').innerHTML = '<tr><td colspan="5" style="color:var(--muted)">برای این مورد امتیازی در دوره انتخاب‌شده محاسبه نشده است.</td></tr>';
+  }
+  switchCaseTab('timeline');
+}
+
+function closeCaseModal() {
+  document.getElementById('case-modal-overlay').style.display = 'none';
+}
+
+function switchCaseTab(tab) {
+  document.querySelectorAll('#case-modal-overlay .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.getElementById('case-tab-timeline').style.display = tab === 'timeline' ? 'block' : 'none';
+  document.getElementById('case-tab-breakdown').style.display = tab === 'breakdown' ? 'block' : 'none';
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text || '';
+  return div.innerHTML;
+}
+
+/* ------------------------------------------------------------------------
+   Suspicious
+------------------------------------------------------------------------ */
+async function loadSuspicious() {
+  const r = await api().get_suspicious();
+  if (!r.ok) return;
+  document.getElementById('suspicious-empty').style.display = 'none';
+  document.getElementById('suspicious-content').style.display = 'block';
+  document.getElementById('suspicious-body').innerHTML = r.rows.map(row => `
+    <tr class="clickable" data-case-number="${escapeHtml(row.case_number || '')}" onclick="openCaseDetail('${row.case_key.replace(/'/g, "\\'")}','all')">
+      <td>${row.case_number || '—'}</td><td>${row.case_title || '—'}</td>
+      <td><div class="chip-list">${row.reasons.map(rs => `<span class="chip">${rs}</span>`).join('')}</div></td>
+    </tr>`).join('');
+  filterSuspiciousTable();
+}
+
+/* ------------------------------------------------------------------------
+   Data Quality
+------------------------------------------------------------------------ */
+async function loadDataQuality() {
+  const d = await api().get_data_quality();
+  if (!d.ok) return;
+  document.getElementById('dq-empty').style.display = 'none';
+  document.getElementById('dq-content').style.display = 'block';
+  document.getElementById('dq-index').textContent = fmt(d.index) + '%';
+  document.getElementById('dq-body').innerHTML = d.checks.map(c => `
+    <tr><td>${c.name_fa}</td>
+      <td><span class="badge ${scoreBadgeClass(c.healthy_score)}">${fmt(c.healthy_score)}%</span></td>
+      <td>${c.issue_count}</td><td style="font-size:12px;color:var(--muted)">${c.detail_fa}</td></tr>`).join('');
+}
+
+/* ------------------------------------------------------------------------
+   Management report
+------------------------------------------------------------------------ */
+async function loadMgmtReport() {
+  const r = await api().get_management_report();
+  if (!r.ok) return;
+  document.getElementById('mgmt-empty').style.display = 'none';
+  document.getElementById('mgmt-content').style.display = 'block';
+  document.getElementById('mgmt-status').textContent = r.overall_status;
+  document.getElementById('mgmt-strengths').innerHTML = r.top_strengths.length
+    ? r.top_strengths.map(s => `<span class="chip">${s}</span>`).join('') : '<span style="color:var(--muted)">موردی شناسایی نشد.</span>';
+  document.getElementById('mgmt-weaknesses').innerHTML = r.top_weaknesses.map(w => `<span class="chip">${w.name} (${fmt(w.score)})</span>`).join('');
+  document.getElementById('mgmt-improved').innerHTML = r.most_improved.map(e => `<li>${e.expert}: +${fmt(e.change)}</li>`).join('') || '<li style="color:var(--muted)">موردی نیست</li>';
+  document.getElementById('mgmt-declined').innerHTML = r.most_declined.map(e => `<li>${e.expert}: ${fmt(e.change)}</li>`).join('') || '<li style="color:var(--muted)">موردی نیست</li>';
+  document.getElementById('mgmt-data-issues').innerHTML = r.data_issues.length
+    ? r.data_issues.map(s => `<span class="chip">${s}</span>`).join('') : '<span style="color:var(--muted)">مشکل قابل‌توجهی نیست.</span>';
+  document.getElementById('mgmt-recs').innerHTML = r.recommendations.map(x => `<li>${x}</li>`).join('');
+}
+
+/* ------------------------------------------------------------------------
+   Export
+------------------------------------------------------------------------ */
+async function exportExcel() {
+  const path = await api().pick_save_path('گزارش-ارزیابی-کیفیت-CRM.xlsx');
+  if (!path) return;
+  const res = await api().export_excel_report(path);
+  document.getElementById('export-result').innerHTML = res.ok
+    ? `<div class="ok-box">فایل ذخیره شد: ${res.path}</div>` : `<div class="err-box">${res.error}</div>`;
+}
+
+async function exportCsv() {
+  const table = document.getElementById('csv-table-select').value;
+  const path = await api().pick_save_path(table + '.csv');
+  if (!path) return;
+  const res = await api().export_csv_table(table, path);
+  document.getElementById('export-result').innerHTML = res.ok
+    ? `<div class="ok-box">فایل ذخیره شد: ${res.path}</div>` : `<div class="err-box">${res.error}</div>`;
+}
+
+async function exportExpertReport() {
+  if (!state.currentExpert) return;
+  const box = document.getElementById('expert-export-result');
+  const safeName = state.currentExpert.replace(/[\\/:*?"<>|]/g, '_');
+  const path = await api().pick_save_path(`گزارش-عملکرد-${safeName}.xlsx`);
+  if (!path) return;
+  box.innerHTML = '<div class="warn-box">در حال ساخت گزارش...</div>';
+  const res = await api().export_expert_report_excel(state.currentExpert, path);
+  box.innerHTML = res.ok
+    ? `<div class="ok-box">گزارش ذخیره شد: ${res.path}</div>` : `<div class="err-box">${res.error}</div>`;
+}
+
+/* ------------------------------------------------------------------------
+   Init
+   نکته: در برخی نسخه‌ها/بک‌اندهای pywebview، رویداد pywebviewready ممکن
+   است قبل از اتصال این Listener شلیک شده باشد؛ برای اطمینان، هم رویداد
+   را گوش می‌دهیم و هم به‌صورت Polling بررسی می‌کنیم که window.pywebview.api
+   آماده شده یا نه.
+------------------------------------------------------------------------ */
+let appInitialized = false;
+function apiMethodsReady() {
+  return !!(window.pywebview && window.pywebview.api &&
+    typeof window.pywebview.api.get_criteria === 'function' &&
+
+    typeof window.pywebview.api.get_ai_settings === 'function');
+
+}
+async function loadCRMSettings() {
+  if (!window.pywebview || !window.pywebview.api || typeof api().get_crm_settings !== 'function') return;
+  const s = await api().get_crm_settings();
+  document.getElementById('crm-base-url').value = s.base_url || '';
+  document.getElementById('crm-org-path').value = s.organization_path || '';
+  document.getElementById('crm-auth-mode').value = s.auth_mode || 'windows';
+  document.getElementById('crm-username').value = s.username || '';
+  toggleCRMCredentials();
+}
+
+function toggleCRMCredentials() {
+  const mode = document.getElementById('crm-auth-mode');
+  const row = document.getElementById('crm-credentials-row');
+  if (mode && row) row.style.display = mode.value === 'credentials' ? 'flex' : 'none';
+}
+
+document.addEventListener('change', event => {
+  if (event.target && event.target.id === 'crm-auth-mode') toggleCRMCredentials();
+});
+
+async function saveCRMSettings() {
+  const payload = {
+    base_url: document.getElementById('crm-base-url').value.trim(),
+    organization_path: document.getElementById('crm-org-path').value.trim(),
+    auth_mode: document.getElementById('crm-auth-mode').value,
+    username: document.getElementById('crm-username').value.trim(),
+    password: document.getElementById('crm-password').value,
+  };
+  const box = document.getElementById('crm-connection-result');
+  const res = await api().save_crm_settings(payload);
+  box.innerHTML = res.ok ? '<div class="ok-box">تنظیمات اتصال ذخیره شد.</div>' : '<div class="err-box">' + escapeHtml(res.error || 'ذخیره تنظیمات ناموفق بود.') + '</div>';
+  if (res.ok) document.getElementById('crm-password').value = '';
+}
+
+async function testCRMConnection() {
+  const box = document.getElementById('crm-connection-result');
+  box.innerHTML = '<div class="warn-box">در حال تست اتصال خواندنی CRM...</div>';
+  await saveCRMSettings();
+  const res = await api().test_crm_connection();
+  box.innerHTML = res.ok ? '<div class="ok-box">' + escapeHtml(res.message) + '</div>' : '<div class="err-box">' + escapeHtml(res.error || 'اتصال ناموفق بود.') + '</div>';
+}
+
+async function fetchSelectedCRMView() {
+  const select = document.getElementById('crm-view-select');
+  const view = state.crmViews.find(v => String(v.id) === String(select.value));
+  const box = document.getElementById('crm-connection-result');
+  if (!view) { box.innerHTML = '<div class="warn-box">ابتدا یک View انتخاب کنید.</div>'; return; }
+  box.innerHTML = '<div class="warn-box">در حال دریافت داده View انتخابی...</div>';
+  const res = await api().fetch_crm_view(view);
+  box.innerHTML = res.ok
+    ? '<div class="ok-box">' + escapeHtml(res.message) + ' تعداد Case: ' + res.count + ' | Note: ' + (res.notes || 0) + ' | Task: ' + (res.tasks || 0) + '</div>'
+    : '<div class="err-box">' + escapeHtml(res.error || 'دریافت View ناموفق بود.') + '</div>';
+}
+async function loadCRMViews() {
+  const box = document.getElementById('crm-connection-result');
+  const select = document.getElementById('crm-view-select');
+  box.innerHTML = '<div class="warn-box">در حال دریافت Viewهای سازمانی CRM...</div>';
+  await saveCRMSettings();
+  const res = await api().get_crm_views();
+  if (!res.ok) {
+    box.innerHTML = '<div class="err-box">' + escapeHtml(res.error || 'دریافت Viewها ناموفق بود.') + '</div>';
+    return;
+  }
+  state.crmViews = res.views || [];
+  select.innerHTML = '<option value="">انتخاب View</option>' + res.views.map(v => '<option value="' + escapeHtml(v.id || '') + '">' + escapeHtml(v.name) + ' — ' + escapeHtml(v.scope || '') + '</option>').join('');
+  box.innerHTML = '<div class="ok-box">' + res.views.length + ' View دریافت شد. View مورد نظر را انتخاب کنید.</div>';
+}
+async function loadDataSourceStatus() {
+  if (!window.pywebview || !window.pywebview.api || typeof api().get_data_source_status !== 'function') return;
+  try {
+    const s = await api().get_data_source_status();
+    state.datasetLoaded = !!s.connected;
+    state.analysisDone = !!s.has_result;
+    const message = s.connected
+      ? 'CRM متصل | ' + (s.total_cases || 0) + ' مورد در حافظه برنامه'
+      : 'CRM متصل نیست؛ ابتدا داده‌ها را از CRM دریافت کنید';
+    const status = document.getElementById('dataset-status');
+    const source = document.getElementById('source-status');
+    if (status) status.textContent = message;
+    const runButton = document.getElementById('btn-run');
+    if (runButton) runButton.disabled = !s.connected;
+    if (source) source.innerHTML = s.connected
+      ? '<div class="ok-box">' + message + (s.has_result ? ' | آخرین تحلیل ذخیره‌شده آماده نمایش است.' : '') + '</div>'
+      : '<div class="warn-box">' + message + '</div>';
+    if (s.has_result) refreshAllReports();
+  } catch (e) {
+    const source = document.getElementById('source-status');
+    if (source) source.innerHTML = '<div class="err-box">وضعیت منبع داده خوانده نشد: ' + escapeHtml(String(e)) + '</div>';
+  }
+}
+function initApp() {
+  if (appInitialized) return;
+  if (!apiMethodsReady()) return; // هنوز کامل آماده نشده؛ Poll ادامه پیدا می‌کند
+  appInitialized = true;
+  const loadingOverlay = document.getElementById('boot-loading');
+  if (loadingOverlay) loadingOverlay.style.display = 'none';
+  loadCriteria();
+  loadAiSettings();
+  loadExpertGroupsSettings();
+  loadCRMSettings();
+  loadDataSourceStatus();
+  showPage('periods');
+  buildJalaliPicker('p1-start-picker');
+  buildJalaliPicker('p1-end-picker');
+  api().get_version().then(v => {
+    document.getElementById('app-version').textContent = 'نگارش: ' + v;
+  }).catch(() => {});
+}
+
+if (apiMethodsReady()) {
+  initApp();
+} else {
+  window.addEventListener('pywebviewready', initApp);
+  let tries = 0;
+  const readyPoll = setInterval(() => {
+    tries += 1;
+    if (apiMethodsReady()) {
+      clearInterval(readyPoll);
+      initApp();
+    } else if (tries > 200) {
+      // بعد از ~۲۰ ثانیه هنوز متدهای API کامل آماده نشده -> به‌جای شکست
+      // خاموش (که قبلاً باعث می‌شد دکمه‌ها و معیارها بدون هیچ توضیحی کار نکنند)
+      // یک پیام خطای واضح، قابل‌مشاهده و قابل‌اقدام به کاربر نشان می‌دهیم.
+      clearInterval(readyPoll);
+      const loadingOverlay = document.getElementById('boot-loading');
+      if (loadingOverlay) loadingOverlay.style.display = 'none';
+      document.getElementById('boot-error').style.display = 'flex';
+      console.error('متدهای pywebview API کامل آماده نشدند.');
+    }
+  }, 100);
+}

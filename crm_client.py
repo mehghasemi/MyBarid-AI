@@ -210,6 +210,7 @@ def _powershell_get_json(url: str, username: str = "", password: str = "") -> di
         "$OutputEncoding = $utf8; "
         "[Console]::OutputEncoding = $utf8; "
         "$u=$env:MYBARID_CRM_URL; "
+        "try { "
         "if ($env:MYBARID_CRM_USER -and $env:MYBARID_CRM_PASS) { "
         "$sec=ConvertTo-SecureString $env:MYBARID_CRM_PASS -AsPlainText -Force; "
         "$cred=New-Object System.Management.Automation.PSCredential("
@@ -223,6 +224,16 @@ def _powershell_get_json(url: str, username: str = "", password: str = "") -> di
         "-Headers @{Accept='application/json';'OData-Version'='4.0';"
         "Prefer='odata.include-annotations=\"*\"'} "
         f"-TimeoutSec {CRM_REQUEST_TIMEOUT_SECONDS} "
+        "}; "
+        "} catch { "
+        "$failure=$_; $status=0; $body=''; "
+        "if ($failure.Exception.Response) { "
+        "$status=[int]$failure.Exception.Response.StatusCode; "
+        "try { $reader=New-Object System.IO.StreamReader($failure.Exception.Response.GetResponseStream()); "
+        "$body=$reader.ReadToEnd(); $reader.Dispose() } catch {} }; "
+        "if ([string]::IsNullOrWhiteSpace($body) -and $failure.ErrorDetails) { $body=$failure.ErrorDetails.Message }; "
+        "@{mybarid_transport_error=$true;status=$status;body=$body;message=$failure.Exception.Message} "
+        "| ConvertTo-Json -Compress -Depth 10; exit 22; "
         "}; "
         "if ($null -eq $r -or $null -eq $r.RawContentStream) { "
         "throw 'CRM پاسخ خالی برگرداند.' "
@@ -260,6 +271,30 @@ def _powershell_get_json(url: str, username: str = "", password: str = "") -> di
     except OSError as exc:
         raise CRMClientError(f"اجرای ابزار ارتباط با CRM ممکن نشد: {exc}") from exc
     if completed.returncode != 0:
+        try:
+            failure = json.loads(completed.stdout or "{}")
+        except (ValueError, TypeError):
+            failure = {}
+        if isinstance(failure, dict) and failure.get("mybarid_transport_error"):
+            body = str(failure.get("body") or failure.get("message") or "پاسخ بدون جزئیات")
+            try:
+                crm_error = json.loads(body).get("error", {})
+                if isinstance(crm_error, dict):
+                    message = crm_error.get("message")
+                    if isinstance(message, dict):
+                        message = message.get("value")
+                    body = str(message or body)
+            except (ValueError, TypeError, AttributeError):
+                pass
+            for secret in (password, username):
+                if secret:
+                    body = body.replace(secret, "[حذف‌شده]")
+            endpoint = url.split("?", 1)[0]
+            status = failure.get("status") or "نامشخص"
+            raise CRMClientError(
+                f"درخواست CRM ناموفق بود (HTTP {status}). مسیر: {endpoint}. "
+                f"جزئیات: {body[:1800]}"
+            )
         detail = (completed.stderr or completed.stdout or "").strip()
         detail = detail[:700] or "جزئیات خطا از PowerShell دریافت نشد."
         lowered = detail.casefold()

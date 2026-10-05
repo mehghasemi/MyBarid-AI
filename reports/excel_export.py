@@ -26,7 +26,7 @@ def _write_table(ws, headers: list[str], rows: list[list], rtl: bool = True):
 
 def export_excel(path: str, data: dict) -> None:
     """data کلیدهای زیر را می‌پذیرد (هرکدام اختیاری؛ اگر وجود نداشته باشد آن شیت ساخته نمی‌شود):
-    summary, cases, experts, criteria, comparison, data_quality, ai_analysis, suspicious
+    summary, cases, experts, criteria, data_quality, ai_analysis, suspicious
     هرکدام: {"headers": [...], "rows": [[...], ...]}"""
     wb = Workbook()
     first = True
@@ -35,7 +35,6 @@ def export_excel(path: str, data: dict) -> None:
         "cases": "Case Analysis",
         "experts": "Expert Analysis",
         "criteria": "Criteria Scores",
-        "comparison": "Period Comparison",
         "data_quality": "Data Quality",
         "ai_analysis": "AI Analysis",
         "suspicious": "Suspicious Cases",
