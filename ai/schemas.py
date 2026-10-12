@@ -50,7 +50,7 @@ def _criterion_payload(payload: dict, criterion_id: str) -> dict[str, Any]:
     }
 
 
-def validate_case_analysis(payload: dict, expected_criteria: list[str]) -> tuple[bool, list[str]]:
+def validate_case_analysis(payload: dict, expected_criteria: list[str], case=None) -> tuple[bool, list[str]]:
     """Validate explainable AI output; unsupported/incomplete scores are rejected."""
     problems: list[str] = []
     if not isinstance(payload, dict):
@@ -83,5 +83,12 @@ def validate_case_analysis(payload: dict, expected_criteria: list[str]) -> tuple
             problems.append(f"{criterion_id}.confidence")
         if source_events is not None and not isinstance(source_events, list):
             problems.append(f"{criterion_id}.source_events")
+        if case is not None and score is not None:
+            available = {("note", str(n.note_id)) for n in case.notes if n.note_id}
+            available |= {("task", str(t.task_id)) for t in case.tasks if t.task_id}
+            if not source_events or not isinstance(source_events, list):
+                problems.append(f"{criterion_id}.missing_event_reference")
+            elif any(not isinstance(ref, dict) or (ref.get("event_type"), str(ref.get("event_id"))) not in available for ref in source_events):
+                problems.append(f"{criterion_id}.invalid_event_reference")
 
     return not problems, problems

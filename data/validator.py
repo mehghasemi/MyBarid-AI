@@ -1,11 +1,6 @@
-"""تبدیل سطرهای خام اکسل (بعد از Mapping) به رکوردهای کانونی + اعتبارسنجی.
+"""CRM normalized records, date conversion and source validation summary.
 
-هیچ رکوردی به‌خاطر «ناقص بودن» به‌طور کامل حذف نمی‌شود؛ فقط در آمار
-«رکوردهای ناقص» شمرده می‌شود و لایه‌های تحلیل (Rule Engine) خودشان
-تصمیم می‌گیرند چه امتیازی به آن بدهند (مثلاً Description خالی => امتیاز صفر).
-استثنا: سطرهایی که هیچ تاریخ قابل‌پارس‌شدنی ندارند از تحلیلِ مبتنی بر
-بازه‌ی زمانی کنار گذاشته می‌شوند، چون فیلتر دوره برایشان بی‌معناست؛ تعدادشان
-هم در گزارش اعتبارسنجی گزارش می‌شود.
+Module path is retained for existing serialized snapshots. No Workbook ingestion.
 """
 from __future__ import annotations
 
@@ -13,14 +8,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from data.loader import LoadedSheet
-from data.mapper import (
-    NOTES_FIELDS,
-    TASKS_FIELDS,
-    FieldSpec,
-    MappingResult,
-    detect_mapping,
-)
 
 _DATE_FORMATS = (
     "%Y-%m-%d %H:%M:%S",
@@ -51,6 +38,14 @@ def parse_datetime(value: Any) -> datetime | None:
         text = value.strip()
         if not text:
             return None
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            if parsed.tzinfo:
+                from datetime import timezone
+                parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed
+        except ValueError:
+            pass
         for fmt in _DATE_FORMATS:
             try:
                 return datetime.strptime(text, fmt)
@@ -79,6 +74,10 @@ class NoteRecord:
     case_description: str | None
     scenario: str | None
     case_id: str | None = None
+    created_on: datetime | None = None
+    modified_on: datetime | None = None
+    modified_by: str | None = None
+    is_customer_response: bool | None = None
 
     @property
     def case_key(self) -> str | None:
@@ -107,6 +106,10 @@ class TaskRecord:
     work_type: str | None
     assign_to: str | None
     case_id: str | None = None
+    actual_end: datetime | None = None
+    state_code: str | None = None
+    owner: str | None = None
+    modified_by: str | None = None
 
     @property
     def case_key_hint(self) -> str | None:
@@ -130,147 +133,3 @@ class ValidationSummary:
     ambiguous: dict[str, list[str]]
     unmatched_headers: list[str]
     warnings: list[str] = field(default_factory=list)
-
-
-def _get(row: dict[str, Any], mapping: dict[str, str | None], field_name: str) -> Any:
-    header = mapping.get(field_name)
-    if header is None:
-        return None
-    value = row.get(header)
-    if isinstance(value, str):
-        value = value.strip()
-        return value or None
-    return value
-
-
-def normalize_notes(loaded: LoadedSheet) -> tuple[list[NoteRecord], MappingResult, ValidationSummary]:
-    mr = detect_mapping(loaded.headers, NOTES_FIELDS)
-    records: list[NoteRecord] = []
-    rows_without_date = 0
-    incomplete = 0
-    case_keys: set[str] = set()
-
-    for row in loaded.rows:
-        note_date = parse_datetime(_get(row, mr.mapping, "note_date"))
-        if note_date is None:
-            rows_without_date += 1
-        description = _get(row, mr.mapping, "description") or ""
-        if not description.strip():
-            incomplete += 1
-        rec = NoteRecord(
-            note_id=_get(row, mr.mapping, "note_id"),
-            description=description,
-            case_number=_get(row, mr.mapping, "case_number"),
-            case_title=_get(row, mr.mapping, "case_title"),
-            customer=_get(row, mr.mapping, "customer"),
-            owner=_get(row, mr.mapping, "owner"),
-            service=_get(row, mr.mapping, "service"),
-            case_status=_get(row, mr.mapping, "case_status"),
-            case_status_reason=_get(row, mr.mapping, "case_status_reason"),
-            case_created_on=parse_datetime(_get(row, mr.mapping, "case_created_on")),
-            case_created_by=_get(row, mr.mapping, "case_created_by"),
-            note_date=note_date,
-            note_author=_get(row, mr.mapping, "note_author"),
-            assign_to=_get(row, mr.mapping, "assign_to"),
-            incident_type=_get(row, mr.mapping, "incident_type"),
-            case_description=_get(row, mr.mapping, "case_description"),
-            scenario=_get(row, mr.mapping, "scenario"),
-        )
-        if rec.case_key:
-            case_keys.add(rec.case_key)
-        records.append(rec)
-
-    warnings = []
-    if not mr.mapping.get("case_number"):
-        warnings.append(
-            "ستون «شماره Case» در فایل Notes پیدا نشد؛ گروه‌بندی موقتاً بر اساس «عنوان Case» انجام می‌شود که ممکن است دقیق نباشد."
-        )
-    if mr.ambiguous:
-        for fname, cands in mr.ambiguous.items():
-            label = next((s.label_fa for s in NOTES_FIELDS if s.name == fname), fname)
-            warnings.append(
-                f"برای فیلد «{label}» چند ستون مشابه پیدا شد ({', '.join(cands)})؛ ستون «{cands[0]}» انتخاب شد. در صورت نیاز می‌توانید در تنظیمات Mapping را دستی اصلاح کنید."
-            )
-
-    summary = ValidationSummary(
-        file_name=loaded.file_name,
-        sheet_name=loaded.sheet_name,
-        total_rows=len(loaded.rows),
-        usable_rows=len(loaded.rows) - rows_without_date,
-        rows_without_date=rows_without_date,
-        unique_cases=len(case_keys),
-        incomplete_rows=incomplete,
-        usable_columns=sum(1 for v in mr.mapping.values() if v),
-        total_columns=len(loaded.headers),
-        mapping=mr.mapping,
-        missing_required_labels=[s.label_fa for s in mr.missing_required],
-        ambiguous=mr.ambiguous,
-        unmatched_headers=mr.unmatched_headers,
-        warnings=warnings,
-    )
-    return records, mr, summary
-
-
-def normalize_tasks(loaded: LoadedSheet) -> tuple[list[TaskRecord], MappingResult, ValidationSummary]:
-    mr = detect_mapping(loaded.headers, TASKS_FIELDS)
-    records: list[TaskRecord] = []
-    rows_without_date = 0
-    incomplete = 0
-    case_keys: set[str] = set()
-
-    for row in loaded.rows:
-        created_on = parse_datetime(_get(row, mr.mapping, "created_on"))
-        if created_on is None:
-            rows_without_date += 1
-        description = _get(row, mr.mapping, "description")
-        if not description and not _get(row, mr.mapping, "subject"):
-            incomplete += 1
-        rec = TaskRecord(
-            task_id=_get(row, mr.mapping, "task_id"),
-            subject=_get(row, mr.mapping, "subject"),
-            description=description,
-            case_number=_get(row, mr.mapping, "case_number"),
-            regarding=_get(row, mr.mapping, "regarding"),
-            created_by=_get(row, mr.mapping, "created_by"),
-            created_on=created_on,
-            actual_start=parse_datetime(_get(row, mr.mapping, "actual_start")),
-            due_date=parse_datetime(_get(row, mr.mapping, "due_date")),
-            status_reason=_get(row, mr.mapping, "status_reason"),
-            follow_up_needed=_get(row, mr.mapping, "follow_up_needed"),
-            next_follow_up=parse_datetime(_get(row, mr.mapping, "next_follow_up")),
-            work_type=_get(row, mr.mapping, "work_type"),
-            assign_to=_get(row, mr.mapping, "assign_to"),
-        )
-        if rec.case_key_hint:
-            case_keys.add(rec.case_key_hint)
-        records.append(rec)
-
-    warnings = []
-    if not mr.mapping.get("case_number"):
-        warnings.append(
-            "ستون «شماره Case» در فایل Tasks پیدا نشد؛ اتصال Task به Case بر اساس تطبیق متنی «Regarding» با «عنوان Case» در فایل Notes انجام می‌شود (Best-Effort، همراه با درجه اطمینان)."
-        )
-    if mr.ambiguous:
-        for fname, cands in mr.ambiguous.items():
-            label = next((s.label_fa for s in TASKS_FIELDS if s.name == fname), fname)
-            warnings.append(
-                f"برای فیلد «{label}» چند ستون مشابه پیدا شد ({', '.join(cands)})؛ ستون «{cands[0]}» انتخاب شد."
-            )
-
-    summary = ValidationSummary(
-        file_name=loaded.file_name,
-        sheet_name=loaded.sheet_name,
-        total_rows=len(loaded.rows),
-        usable_rows=len(loaded.rows) - rows_without_date,
-        rows_without_date=rows_without_date,
-        unique_cases=len(case_keys),
-        incomplete_rows=incomplete,
-        usable_columns=sum(1 for v in mr.mapping.values() if v),
-        total_columns=len(loaded.headers),
-        mapping=mr.mapping,
-        missing_required_labels=[s.label_fa for s in mr.missing_required],
-        ambiguous=mr.ambiguous,
-        unmatched_headers=mr.unmatched_headers,
-        warnings=warnings,
-    )
-    return records, mr, summary

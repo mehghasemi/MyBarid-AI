@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa-IR" dir="rtl">
 <head>
 <meta charset="UTF-8">
 <title>ارزیابی کیفیت عملکرد کارشناسان CRM</title>
@@ -43,14 +43,13 @@
     <div class="module-menu active" data-module-menu="crm-quality">
       <div class="nav-section-title">تحلیل و گزارش</div>
       <div class="nav-item" data-page="dashboard">📊 داشبورد مدیریتی</div>
-      <div class="nav-item" data-page="general">🔎 تحلیل کلی</div>
-      <div class="nav-item" data-page="comparison">🔁 مقایسه دو دوره</div>
-      <div class="nav-item" data-page="ranking">🏆 رتبه‌بندی کارشناسان</div>
+      <div class="nav-item" data-page="ranking">👥 حجم کار مرتبط با کارشناسان</div>
+      <div class="nav-item" data-page="management">📋 ارزیابی کمی، کیفی و صف بررسی</div>
       <div class="nav-item" data-page="cases">🗂 تحلیل موارد</div>
       <div class="nav-item" data-page="suspicious">⚠️ موارد نیازمند بررسی</div>
       <div class="nav-item" data-page="data-quality">🩺 سلامت داده CRM</div>
       <div class="nav-item" data-page="mgmt-report">📝 جمع‌بندی مدیریتی</div>
-      <div class="nav-item" data-page="export">⬇️ Export</div>
+      <div class="nav-item" data-page="export">⬇️ خروجی گزارش‌ها</div>
 
       <div class="nav-section-title">تنظیمات</div>
       <div class="nav-item active" data-page="upload">📥 ورود و دریافت از CRM</div>
@@ -178,7 +177,6 @@
       <div class="topbar-actions">
         <div class="period-switcher" role="group" aria-label="حالت بازه">
           <button type="button" class="period-pill active" onclick="showPage('dashboard')">نمای کلی</button>
-          <button type="button" class="period-pill" onclick="showPage('comparison')">مقایسه دوره‌ها</button>
         </div>
         <span class="connection-status offline" title="داده‌ها از Snapshot محلی خوانده می‌شوند">
           <span class="status-dot"></span>
@@ -264,7 +262,7 @@
     <!-- =========================================================== Periods -->
     <section class="page" id="page-periods">
       <h1 class="page-title">انتخاب بازه‌های زمانی و اجرای تحلیل</h1>
-      <p class="page-sub">دو دوره مستقل برای مقایسه انتخاب کنید (تاریخ‌ها شمسی است). فیلتر بر اساس تاریخ ثبت Note/Task انجام می‌شود.</p>
+      <p class="page-sub">موارد موردنظر را انتخاب کنید؛ ارزیابی بر تمام تاریخچه دریافت‌شده هر مورد انجام می‌شود.</p>
 
       <div class="analysis-flow">
         <div class="analysis-flow-step done"><b>۱</b><span>بارگذاری داده</span><small>از منوی بارگذاری</small></div>
@@ -314,23 +312,7 @@
         </div>
       </div>
 
-      
-      <div class="grid cols-2">
-        <div class="card">
-          <h3>دوره اول</h3>
-          <div class="row">
-            <div class="field"><label class="field-label">از تاریخ</label><div id="p1-start-picker"></div></div>
-            <div class="field"><label class="field-label">تا تاریخ</label><div id="p1-end-picker"></div></div>
-          </div>
-        </div>
-        <div class="card">
-          <h3>دوره دوم</h3>
-          <div class="row">
-            <div class="field"><label class="field-label">از تاریخ</label><div id="p2-start-picker"></div></div>
-            <div class="field"><label class="field-label">تا تاریخ</label><div id="p2-end-picker"></div></div>
-          </div>
-        </div>
-      </div>
+
 
       <div class="analysis-section-title">
         <span class="analysis-section-number">۳</span>
@@ -350,10 +332,7 @@
         <div id="date-bounds-hint" style="font-size:12.5px;color:var(--muted);margin-bottom:12px"></div>
         <div class="field" style="max-width:300px">
           <label class="field-label">حالت تحلیل</label>
-          <select id="analysis-mode" onchange="toggleAnalysisMode()">
-            <option value="comparison">مقایسه دوره‌ها</option>
-            <option value="general">تحلیل کلی (کل Dataset)</option>
-          </select>
+          <p class="muted">ارزیابی فقط روی موارد انتخاب‌شده، با تمام تاریخچه دریافت‌شده هر مورد اجرا می‌شود.</p>
         </div>
         <button class="btn primary" id="btn-run" onclick="runAnalysis()">اجرای تحلیل</button>
         <button class="btn" id="btn-rerun-ai" onclick="runAnalysis(true)" title="تحلیل AI موارد را دوباره اجرا می‌کند">تحلیل مجدد AI</button>
@@ -367,6 +346,19 @@
     </section>
 
     <!-- ======================================================== General -->
+    <section class="page" id="page-management">
+      <h1 class="page-title">ارزیابی کمی و کیفی و صف بررسی مدیریتی</h1>
+      <p class="page-sub">نقض حدنصاب و کمبود داده جدا هستند؛ زمان‌ها ساعت تقویمی است.</p>
+      <div id="management-info" class="muted-box"></div>
+      <details class="card"><summary>تاریخچه واقعی CRM — ادمین</summary><p>ابتدا یک مورد را در جدول انتخاب کنید. این عملیات فقط تاریخچه همان مورد را می‌خواند؛ اگر Audit ایجاد، زنجیره تغییرات یا دسترسی کافی نباشد، نتیجه ناقص استفاده نمی‌شود. هیچ داده‌ای در CRM تغییر نمی‌کند.</p><button id="management-history-button" class="btn" onclick="retrieveSelectedHistory()">دریافت تاریخچه مورد انتخاب‌شده</button><p id="management-history-result" aria-live="polite"></p><label for="management-status-mapping">نگاشت کد statuscode به عنوان و گروه وضعیت (JSON)</label><p>مثال ساختار: {"کد عددی": {"name": "عنوان فارسی", "kind": "waiting_customer"}}. گروه‌های مجاز: open، resolved، closed، waiting_customer، waiting_team، waiting_third_party. کد واقعی را از CRM بگیرید؛ کد حدس نزنید.</p><textarea id="management-status-mapping" dir="ltr" placeholder="{}"></textarea><button class="btn" onclick="saveStatusMapping()">ذخیره نگاشت وضعیت‌ها</button></details>
+      <div class="field"><label>شدت نتیجه</label><select id="management-severity" onchange="renderManagementRows()"><option value="all">همه شدت‌ها</option><option value="critical">بحرانی</option><option value="warning">هشدار</option><option value="info">اطلاعاتی / کمبود داده</option></select></div>
+      <div class="card row"><div class="field"><label>نتیجه</label><select id="management-state" onchange="renderManagementRows()"><option value="all">همه</option><option value="needs_correction">نیازمند اصلاح</option><option value="insufficient_data">کمبود داده</option><option value="measured">بدون حدنصاب</option><option value="pass">قبول</option><option value="not_applicable">نامرتبط</option></select></div><div class="field"><label>معیار، مورد، مشتری، سرویس یا مالک</label><input id="management-query" oninput="renderManagementRows()"></div></div>
+      <div class="card" style="overflow:auto"><table><thead><tr><th>مورد</th><th>معیار</th><th>مقدار واقعی</th><th>حدنصاب</th><th>نتیجه</th><th>شواهد / داده لازم</th></tr></thead><tbody id="management-rows"></tbody></table></div>
+      <p id="management-count" aria-live="polite"></p><button id="management-more" class="btn" onclick="showMoreManagementRows()" hidden>نمایش ۳۰۰ نتیجه بعدی</button>
+      <details class="card"><summary>تنظیم شدت معیارها — ادمین</summary><p>شدت فقط برای نقض حدنصاب اعمال می‌شود؛ کمبود داده بحرانی تلقی نمی‌شود. تغییر از ارزیابی بعدی اعمال می‌شود.</p><div id="management-severity-settings"></div><button class="btn" onclick="saveManagementSeverities()">ذخیره شدت‌ها</button></details>
+      <div class="card"><h3>حدنصاب مدیریتی — ادمین</h3><p>حداکثر قابل‌قبول برای معیارهای کمی؛ مقدار خالی یعنی بدون قضاوت. حداقل امتیاز معیارهای کیفی در «معیارها و وزن‌ها» تنظیم می‌شود. تغییر از ارزیابی بعدی اعمال می‌شود.</p><div id="management-thresholds"></div><button class="btn" onclick="saveManagementThresholds()">ذخیره حدنصاب‌ها</button></div>
+      <div class="card"><h3>ثبت اقدام در بانک محلی</h3><div class="row"><div class="field"><label>کلید مورد</label><input id="action-case"></div><div class="field"><label>شناسه معیار</label><input id="action-criterion"></div><div class="field"><label>مسئول اقدام</label><input id="action-owner"></div><div class="field"><label>موعد</label><input id="action-due" type="datetime-local"></div></div><div class="field"><label>تصمیم / اقدام</label><textarea id="action-decision"></textarea></div><button class="btn primary" onclick="saveManagementAction()">ثبت اقدام</button><div id="management-actions"></div></div>
+    </section>
     <section class="page" id="page-general">
       <h1 class="page-title">تحلیل کلی</h1>
       <p class="page-sub">کل Dataset فعلی با همان Rule Engine، Scoring، Evidence، N/A، Coverage و Confidence تحلیل می‌شود.</p>
@@ -432,14 +424,7 @@
       <p class="page-sub">معیارها را فعال/غیرفعال و وزن آن‌ها را تنظیم کنید.</p>
       <div class="warn-box">تغییرات این صفحه ذخیره می‌شوند ولی روی نتیجه فعلی روی صفحه اثر نمی‌گذارند؛ برای اعمال تغییرات باید از صفحه «بازه‌های زمانی و اجرا»، تحلیل را دوباره اجرا کنید.</div>
 
-      <div class="card" style="margin-bottom:16px">
-        <h3>نسبت Objective / AI در Final Score</h3>
-        <div class="row" style="max-width:420px">
-          <div class="field"><label class="field-label">سهم Rule-Based (Objective)</label><input type="number" id="ratio-objective" min="0" max="1" step="0.05"></div>
-          <div class="field"><label class="field-label">سهم AI</label><input type="number" id="ratio-ai" min="0" max="1" step="0.05"></div>
-          <div class="field"><button class="btn primary" onclick="saveRatio()">ذخیره</button></div>
-        </div>
-      </div>
+      <div class="muted-box">نتایج کمی و کیفی جدا هستند؛ امتیاز ترکیبی تولید نمی‌شود. حدنصاب هر معیار مستقل تنظیم می‌شود.</div>
 
       <div id="criteria-list"></div>
       <div class="card" style="margin-top:20px">
@@ -521,38 +506,22 @@
       <div id="dashboard-content" style="display:none">
         <div class="grid cols-4" id="dashboard-kpis"></div>
         <div class="grid cols-2" style="margin-top:16px">
-          <div class="card"><h3>مقایسه دسته‌های کیفیت (دوره ۱ / دوره ۲)</h3><canvas id="chart-categories" height="220"></canvas></div>
+          <div class="card"><h3>ارزیابی کیفی موارد منتخب</h3><canvas id="chart-categories" height="220"></canvas></div>
           <div class="card"><h3>روند امتیاز کلی</h3><canvas id="chart-overall" height="220"></canvas></div>
         </div>
       </div>
     </section>
 
     <!-- ======================================================= Comparison -->
-    <section class="page" id="page-comparison">
-      <h1 class="page-title">مقایسه دو دوره</h1>
-      <div id="comparison-empty" class="empty-state">هنوز تحلیلی اجرا نشده است.</div>
-      <div id="comparison-content" style="display:none">
-        <div class="card" style="margin-bottom:16px" id="comparison-narrative"></div>
-        <div class="grid cols-2">
-          <div class="card">
-            <h3>بر اساس دسته‌بندی</h3>
-            <table><thead><tr><th>دسته</th><th>دوره اول</th><th>دوره دوم</th><th>تغییر</th></tr></thead><tbody id="comparison-cat-body"></tbody></table>
-          </div>
-          <div class="card">
-            <h3>بر اساس معیار</h3>
-            <table><thead><tr><th>معیار</th><th>دوره اول</th><th>دوره دوم</th><th>تغییر</th></tr></thead><tbody id="comparison-crit-body"></tbody></table>
-          </div>
-        </div>
-      </div>
-    </section>
+
 
     <!-- ========================================================== Ranking -->
     <section class="page" id="page-ranking">
-      <h1 class="page-title">رتبه‌بندی کارشناسان</h1>
+      <h1 class="page-title">حجم کار مرتبط با مالک فعلی</h1>
       <div id="ranking-empty" class="empty-state">هنوز تحلیلی اجرا نشده است.</div>
       <div id="ranking-content" style="display:none" class="card">
         <table>
-          <thead><tr><th>کارشناس</th><th>دوره اول</th><th>دوره دوم</th><th>تغییر</th><th>وضعیت</th><th>تعداد مورد (دوره ۲)</th></tr></thead>
+          <thead><tr><th>مالک فعلی؛ بدون انتساب تاریخی</th><th>وضعیت</th><th>تعداد مورد</th></tr></thead>
           <tbody id="ranking-body"></tbody>
         </table>
       </div>
@@ -565,8 +534,8 @@
         <div id="expert-export-result" style="margin-top:8px"></div>
         <div class="grid cols-2" id="expert-detail-stats" style="margin-top:10px"></div>
         <div id="expert-feedback-box" style="display:none;margin-top:16px"></div>
-        <h3 style="margin-top:16px">موارد دوره دوم (ضعیف‌ترین ابتدا)</h3>
-        <table><thead><tr><th>شماره مورد</th><th>عنوان</th><th>Final Score</th></tr></thead><tbody id="expert-cases-body"></tbody></table>
+        <h3 style="margin-top:16px">موارد مرتبط</h3>
+        <table><thead><tr><th>شماره مورد</th><th>عنوان</th></tr></thead><tbody id="expert-cases-body"></tbody></table>
       </div>
     </section>
 
@@ -579,8 +548,7 @@
           <div class="field" style="max-width:160px">
             <label class="field-label">دوره</label>
             <select id="cases-period" onchange="loadCasesTable(0)">
-              <option value="period2">دوره دوم</option>
-              <option value="period1">دوره اول</option>
+              <option value="general">موارد منتخب</option>
               <option value="all">همه دوره‌ها</option>
             </select>
           </div>
@@ -642,11 +610,10 @@
 
     <section class="page" id="page-suspicious-rules">
       <h1 class="page-title">قواعد موارد نیازمند بررسی</h1>
-      <p class="page-sub">دلایل علامت‌گذاری Caseها را بر اساس نیاز خود فعال یا غیرفعال کنید. تغییر این قواعد روی تحلیل‌های بعدی اعمال می‌شود.</p>
+      <p class="page-sub">قواعد هشدار مستقل بازنشسته شده‌اند. صف بررسی اکنون از نتایج معیارها ساخته می‌شود؛ حدنصاب‌ها را در ارزیابی مدیریتی و معیارها تنظیم کنید.</p>
       <div id="suspicious-rules-list"></div>
       <div style="margin-top:14px">
-        <button class="btn primary" onclick="saveSuspiciousRules()">ذخیره قواعد</button>
-        <button class="btn" onclick="loadSuspiciousRules()">بازخوانی تنظیمات</button>
+        <button class="btn primary" onclick="showPage('management')">ارزیابی و صف بررسی مدیریتی</button>
       </div>
       <div id="suspicious-rules-result" style="margin-top:12px"></div>
     </section>
@@ -711,8 +678,6 @@
         <div class="grid cols-2">
           <div class="card"><h3>مهم‌ترین نقاط قوت</h3><div class="chip-list" id="mgmt-strengths"></div></div>
           <div class="card"><h3>مهم‌ترین نقاط ضعف</h3><div class="chip-list" id="mgmt-weaknesses"></div></div>
-          <div class="card"><h3>بیشترین بهبود</h3><ul id="mgmt-improved"></ul></div>
-          <div class="card"><h3>بیشترین افت</h3><ul id="mgmt-declined"></ul></div>
         </div>
         <div class="card" style="margin-top:16px"><h3>مهم‌ترین مشکلات ثبت اطلاعات</h3><div class="chip-list" id="mgmt-data-issues"></div></div>
         <div class="card" style="margin-top:16px"><h3>پیشنهادهای بهبود</h3><ul id="mgmt-recs"></ul></div>
@@ -731,7 +696,6 @@
             <option value="cases">تحلیل موارد</option>
             <option value="experts">Expert Analysis</option>
             <option value="criteria">Criteria Scores</option>
-            <option value="comparison">Period Comparison</option>
             <option value="data_quality">Data Quality</option>
             <option value="ai_analysis">AI Analysis</option>
             <option value="suspicious">موارد نیازمند بررسی</option>
@@ -747,6 +711,7 @@
 
 <div class="toast-container" id="toast-container"></div>
 
+<script src="./management.js"></script>
 <script src="./app.js"></script>
 </body>
 </html>

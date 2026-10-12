@@ -7,7 +7,6 @@ from analysis.suspicious import normalize_reason
 from analysis.scoring import score_case
 from config.criteria_config import load_criteria_config
 from data.cleaner import build_cases
-from data.mapper import NOTES_FIELDS, TASKS_FIELDS, detect_mapping
 from data.validator import NoteRecord, TaskRecord
 from ai.providers import AISettings
 from pipeline import Dataset, run_general_analysis
@@ -38,24 +37,8 @@ def make_task(**kwargs) -> TaskRecord:
 
 # ---------------------------------------------------------------- Mapper --
 
-def test_mapper_handles_real_dynamics_headers():
-    headers = [
-        "(Do Not Modify) Note", "(Do Not Modify) Row Checksum", "(Do Not Modify) Modified On",
-        "Title", "Description", "Case Number (Regarding) (Case)", "Case Title (Regarding) (Case)",
-        "Customer (Regarding) (Case)", "Status (Regarding) (Case)", "Modified By", "Modified On",
-    ]
-    result = detect_mapping(headers, NOTES_FIELDS)
-    assert result.mapping["description"] == "Description"
-    assert result.mapping["case_number"] == "Case Number (Regarding) (Case)"
-    assert result.mapping["note_date"] == "(Do Not Modify) Modified On"
-    assert not result.missing_required
 
 
-def test_mapper_reports_missing_required():
-    headers = ["Subject", "Regarding"]  # بدون Created On و Description
-    result = detect_mapping(headers, TASKS_FIELDS)
-    missing_ids = {s.name for s in result.missing_required}
-    assert "created_on" in missing_ids
 
 
 # ------------------------------------------------------------ Case link --
@@ -126,11 +109,11 @@ def test_task_presence_is_na_without_explicit_l2_evidence():
     assert "Insufficient Evidence" in result.evidence
 
 
-def test_task_presence_requires_task_only_for_explicit_l2_referral():
+def test_l2_referral_without_complete_feed_is_not_automatic_failure():
     notes = [make_note(case_description="ارجاع به لایه دو پشتیبانی لازم است.")]
     cases, _ = build_cases(notes, [])
     result = task_presence_when_needed(cases["CAS-1"])
-    assert result.score == 0
+    assert result.score is None
 
 
 def test_general_analysis_is_one_independent_result():
@@ -172,13 +155,13 @@ def test_unknown_service_keeps_default_criteria_set():
 
 # ------------------------------------------------------------ Experts ---
 
-def test_primary_expert_ignores_portal():
+def test_current_owner_is_not_inferred_from_note_volume_or_actor():
     notes = [
         make_note(note_author="portal portal", description="سلام مشکل دارم" * 5),
         make_note(note_author="کارشناس ۲", description="بررسی و رفع شد"),
     ]
     cases, _ = build_cases(notes, [])
-    assert primary_expert(cases["CAS-1"]) == "کارشناس ۲"
+    assert primary_expert(cases["CAS-1"]) == "کارشناس ۱"
 
 
 # ------------------------------------------------------------ Scoring ---
@@ -192,10 +175,10 @@ def test_score_case_without_ai_uses_objective_only():
     assert breakdown.ai_used is False
     assert breakdown.ai_score is None
     assert breakdown.objective_score is not None
-    assert breakdown.final_score == breakdown.objective_score
+    assert breakdown.final_score is None
 
 
-def test_score_case_combines_ai_when_provided():
+def test_score_case_keeps_ai_separate_when_provided():
     notes = [make_note(description="مشکل قطعی سرویس بود. بررسی و اقدام شد. مشکل رفع شد.")]
     cases, _ = build_cases(notes, [])
     config = load_criteria_config()
@@ -203,8 +186,7 @@ def test_score_case_combines_ai_when_provided():
     breakdown = score_case(cases["CAS-1"], config, ai_scores)
     assert breakdown.ai_used is True
     assert breakdown.ai_score == 90.0
-    assert breakdown.final_score is not None
-    assert breakdown.final_score != breakdown.objective_score
+    assert breakdown.final_score is None
 
 
 def test_active_criteria_have_audit_guides():

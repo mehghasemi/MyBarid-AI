@@ -40,6 +40,11 @@ class CaseBundle:
     case_description: str | None = None
     notes: list[NoteRecord] = field(default_factory=list)
     task_links: list[TaskLink] = field(default_factory=list)
+    history_complete: bool = False
+    status_history: list[dict] = field(default_factory=list)
+    data_complete: bool = False
+    responsibility_history: list[dict] = field(default_factory=list)
+    responsibility_history_complete: bool = False
 
     @property
     def tasks(self) -> list[TaskRecord]:

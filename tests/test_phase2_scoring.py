@@ -28,7 +28,8 @@ def _case(**overrides):
 
 def test_scoring_reports_coverage_and_na_for_disabled_ai():
     breakdown = score_case(_case(), load_criteria_config())
-    assert 0 < breakdown.coverage < 1
+    assert breakdown.coverage == 0
+    assert breakdown.final_score is None
     assert breakdown.na_criteria > 0
     assert breakdown.confidence in {"low", "medium", "high"}
     assert any(item.score is None and item.na_reason for item in breakdown.criterion_scores)

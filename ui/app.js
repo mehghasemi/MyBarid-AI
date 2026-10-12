@@ -2,12 +2,10 @@
    حالت کلی برنامه در سمت رابط کاربری
 ------------------------------------------------------------------------ */
 const state = {
-  notesPath: null,
-  tasksPath: null,
   datasetLoaded: false,
   dateBounds: null,
   analysisDone: false,
-  analysisMode: 'comparison',
+  analysisMode: 'general',
   casesStatusReasons: [],
   casesService: '',
   suspiciousReasons: [],
@@ -77,7 +75,7 @@ function showConfirmDialog(message, title = 'تأیید عملیات') {
    ناوبری
 ------------------------------------------------------------------------ */
 document.querySelectorAll('.nav-item').forEach(el => {
-  const analysisPages = new Set(['dashboard', 'general', 'comparison', 'ranking', 'cases', 'suspicious', 'data-quality', 'mgmt-report', 'export']);
+  const analysisPages = new Set(['dashboard', 'general', 'ranking', 'cases', 'suspicious', 'data-quality', 'mgmt-report', 'export']);
   if (analysisPages.has(el.dataset.page)) el.classList.add('analysis-nav');
   el.addEventListener('click', () => showPage(el.dataset.page));
   if (el.dataset.help) {
@@ -149,7 +147,7 @@ document.addEventListener('click', event => {
 });
 
 async function showPage(name) {
-  const analysisPages = new Set(['dashboard', 'general', 'comparison', 'ranking', 'cases', 'suspicious', 'data-quality', 'mgmt-report', 'export']);
+  const analysisPages = new Set(['dashboard', 'general', 'ranking', 'cases', 'suspicious', 'data-quality', 'mgmt-report', 'export']);
   if (analysisPages.has(name)) {
     try {
       const info = await api().get_analysis_info();
@@ -177,7 +175,7 @@ async function showPage(name) {
   document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === 'page-' + name));
   const pageTitles = {
     upload: 'ورود و دریافت از CRM', periods: 'آماده‌سازی و اجرای تحلیل',
-    dashboard: 'داشبورد', general: 'تحلیل کلی', comparison: 'مقایسه دوره‌ها',
+    dashboard: 'داشبورد', general: 'تحلیل کلی', management: 'ارزیابی و صف بررسی مدیریتی',
     ranking: 'عملکرد کارشناسان', cases: 'جزئیات موارد / Taskها',
     suspicious: 'موارد نیازمند بررسی', 'data-quality': 'سلامت داده',
     'mgmt-report': 'گزارش مدیریتی', export: 'خروجی و گزارش‌ها',
@@ -188,7 +186,7 @@ async function showPage(name) {
   const topbarTitle = document.getElementById('topbar-page-title');
   if (topbarTitle) topbarTitle.textContent = pageTitles[name] || name;
   const loaders = {
-    dashboard: loadDashboard, general: loadGeneral, comparison: loadComparison,
+    dashboard: loadDashboard, general: loadGeneral, management: loadManagementEvaluation,
     ranking: loadRanking, cases: () => loadCasesTable(0), suspicious: loadSuspicious,
     'data-quality': loadDataQuality, 'mgmt-report': loadMgmtReport,
   };
@@ -235,7 +233,7 @@ function applyNavigationLabels() {
     periods: '🧭 آماده‌سازی و اجرای تحلیل',
     dashboard: '📊 داشبورد',
     general: '🔎 تحلیل کلی',
-    comparison: '🔁 مقایسه دوره‌ها',
+
     ranking: '🏆 عملکرد کارشناسان',
     cases: '🗂 جزئیات موارد / Taskها',
     suspicious: '⚠️ موارد نیازمند بررسی',
@@ -520,109 +518,7 @@ function getJalaliPickerISO(containerId) {
 /* ------------------------------------------------------------------------
    Upload
 ------------------------------------------------------------------------ */
-async function pickFile(kind) {
-  if (!(window.pywebview && window.pywebview.api && typeof window.pywebview.api.pick_file === 'function')) {
-    document.getElementById('boot-error').style.display = 'flex';
-    return;
-  }
-  try {
-    const path = await api().pick_file();
-    if (!path) return;
-    if (kind === 'notes') {
-      state.notesPath = path;
-      document.getElementById('notes-file-name').textContent = path;
-    } else {
-      state.tasksPath = path;
-      document.getElementById('tasks-file-name').textContent = path;
-    }
-    document.getElementById('btn-upload').disabled = !(state.notesPath && state.tasksPath);
-  } catch (e) {
-    toast('پنجره انتخاب فایل باز نشد: ' + e, 'error');
-  }
-}
 
-async function doUpload() {
-  const resultBox = document.getElementById('upload-result');
-  resultBox.innerHTML = '<div class="warn-box">در حال پردازش...</div>';
-  let res;
-  try {
-    res = await api().upload(state.notesPath, state.tasksPath);
-  } catch (e) {
-    resultBox.innerHTML = `<div class="err-box">خطای غیرمنتظره: ${e}</div>`;
-    return;
-  }
-  if (!res.ok) {
-    resultBox.innerHTML = `<div class="err-box">${res.error}</div>`;
-    return;
-  }
-  state.datasetLoaded = true;
-  state.dateBounds = res.date_bounds;
-  document.getElementById('dataset-status').textContent =
-    `${res.total_cases.toLocaleString('fa-IR')} مورد | داده بارگذاری شد`;
-
-  const s = (label, sm) => `
-    <div class="card">
-      <h3>${label}</h3>
-      <table>
-        <tr><td>نام فایل</td><td>${sm.file_name}</td></tr>
-        <tr><td>تعداد رکورد</td><td>${sm.total_rows}</td></tr>
-        <tr><td>مورد یکتا</td><td>${sm.unique_cases}</td></tr>
-        <tr><td>رکورد ناقص</td><td>${sm.incomplete_rows}</td></tr>
-        <tr><td>ستون‌های شناسایی‌شده</td><td>${sm.usable_columns} از ${sm.total_columns}</td></tr>
-        <tr><td>وضعیت اعتبارسنجی</td><td>${sm.missing_required_labels.length ? '<span class="badge bad">ناقص</span>' : '<span class="badge good">موفق</span>'}</td></tr>
-      </table>
-      ${sm.warnings.map(w => `<div class="warn-box" style="margin-top:10px">${w}</div>`).join('')}
-    </div>`;
-
-  resultBox.innerHTML = `
-    <div class="ok-box">فایل‌ها با موفقیت پردازش شدند: ${res.total_cases} مورد، ${res.unmatched_tasks} Task بدون اتصال قطعی به مورد.</div>
-    <div class="grid cols-2">${s('فایل Notes', res.notes_summary)}${s('فایل Tasks', res.tasks_summary)}</div>`;
-
-  // پیش‌فرض بازه‌ها بر اساس داده واقعی
-  if (res.date_bounds.min && res.date_bounds.max) {
-    const min = new Date(res.date_bounds.min), max = new Date(res.date_bounds.max);
-    const mid = new Date((min.getTime() + max.getTime()) / 2);
-    buildJalaliPicker('p1-start-picker', min.toISOString());
-    buildJalaliPicker('p1-end-picker', mid.toISOString());
-    buildJalaliPicker('p2-start-picker', mid.toISOString());
-    buildJalaliPicker('p2-end-picker', max.toISOString());
-    document.getElementById('date-bounds-hint').textContent =
-      `بازه داده موجود: ${toShamsiStr(res.date_bounds.min)} تا ${toShamsiStr(res.date_bounds.max)} (پیش‌فرض به دو نیمه مساوی تقسیم شد؛ قابل تغییر است)`;
-  }
-  loadCriteria();
-  loadAiSettings();
-  loadExpertChecklist();
-  await initializeCaseSelection();
-  toast('فایل‌ها بارگذاری شدند', 'success');
-}
-
-async function autoLoadDefaultFiles() {
-  const box = document.getElementById('auto-input-info');
-  if (!box) return;
-  try {
-    const crm = await api().get_crm_settings();
-    if (crm.data_source === 'crm' && crm.last_snapshot) {
-      box.innerHTML = 'منبع فعال CRM است؛ فایل‌های Excel خودکار خوانده نشدند.';
-      setFileInputEnabled(false);
-      return;
-    }
-    const info = await api().get_auto_input_info();
-    box.innerHTML = `پوشه ورودی: <code>${escapeHtml(info.directory)}</code><br>
-      Notes: <code>notes.xlsx</code> — Tasks: <code>tasks.xlsx</code>`;
-    if (!info.notes_exists || !info.tasks_exists) {
-      box.innerHTML += '<br><span class="muted">هر دو فایل هنوز در پوشه قرار نگرفته‌اند.</span>';
-      return;
-    }
-    state.notesPath = info.notes_file;
-    state.tasksPath = info.tasks_file;
-    document.getElementById('notes-file-name').textContent = info.notes_file;
-    document.getElementById('tasks-file-name').textContent = info.tasks_file;
-    document.getElementById('btn-upload').disabled = false;
-    await doUpload();
-  } catch (e) {
-    box.innerHTML = `<span class="error-text">بررسی پوشه ورودی ناموفق بود: ${escapeHtml(String(e))}</span>`;
-  }
-}
 
 function crmPayload() {
   return {
@@ -634,22 +530,6 @@ function crmPayload() {
     password: document.getElementById('crm-password')?.value || '',
     full_sync: Boolean(document.getElementById('crm-full-sync')?.checked),
   };
-}
-
-function setFileInputEnabled(enabled) {
-  ['btn-upload', 'btn-file-notes', 'btn-file-tasks', 'btn-auto-files'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.disabled = !enabled;
-  });
-  const hint = document.getElementById('file-source-disabled');
-  if (hint) hint.style.display = enabled ? 'none' : 'block';
-}
-
-function useFileSource() {
-  setFileInputEnabled(true);
-  api().set_data_source('file');
-  const hint = document.getElementById('file-source-disabled');
-  if (hint) hint.textContent = 'ورودی فایل فعال شد.';
 }
 
 function ensureCrmViewSelector() {
@@ -714,7 +594,6 @@ async function loadCrmSettings() {
       ? `View پیش‌فرض ذخیره‌شده: ${s.view_name}`
       : 'هنوز View پیش‌فرض ذخیره نشده است.';
   }
-  setFileInputEnabled(s.data_source !== 'crm');
   if (s.last_snapshot) {
     const m = s.last_snapshot.metadata || {};
     const fetchedAt = m.fetched_at || s.last_snapshot.fetched_at;
@@ -900,7 +779,6 @@ async function syncCrmView() {
       }
       const res = status.result;
       if (res.fetched_at) window._crmLastFetchedAt = res.fetched_at;
-      setFileInputEnabled(false);
       state.datasetLoaded = true;
       state.dateBounds = res.date_bounds;
       state.analysisDone = false;
@@ -944,9 +822,6 @@ async function clearDataset() {
   const selectionBody = document.getElementById('case-selection-body');
   if (selectionBody) selectionBody.innerHTML = '<tr><td colspan="7" class="case-selection-empty">پس از بارگذاری داده‌ها، فهرست موارد اینجا نمایش داده می‌شود.</td></tr>';
   updateCaseSelectionSummary();
-  state.notesPath = null; state.tasksPath = null;
-  document.getElementById('notes-file-name').textContent = 'فایلی انتخاب نشده';
-  document.getElementById('tasks-file-name').textContent = 'فایلی انتخاب نشده';
   document.getElementById('btn-upload').disabled = true;
   document.getElementById('upload-result').innerHTML = '';
   document.getElementById('dataset-status').textContent = 'فایلی بارگذاری نشده است.';
@@ -957,7 +832,7 @@ async function clearDataset() {
    Periods & Run
 ------------------------------------------------------------------------ */
 async function runAnalysis(forceAi = false) {
-  if (!state.datasetLoaded) { toast('ابتدا فایل‌ها را بارگذاری کنید', 'error'); return; }
+  if (!state.datasetLoaded) { toast('ابتدا داده CRM را دریافت یا بازیابی کنید', 'error'); return; }
   if (!state.selectedCaseKeys.size) {
     toast('حداقل یک مورد را برای تحلیل انتخاب کنید', 'error');
     return;
@@ -967,11 +842,7 @@ async function runAnalysis(forceAi = false) {
   ))) {
     return;
   }
-  const mode = document.getElementById('analysis-mode').value;
-  const p1s = mode === 'comparison' ? getJalaliPickerISO('p1-start-picker') : '';
-  const p1e = mode === 'comparison' ? getJalaliPickerISO('p1-end-picker') : '';
-  const p2s = mode === 'comparison' ? getJalaliPickerISO('p2-start-picker') : '';
-  const p2e = mode === 'comparison' ? getJalaliPickerISO('p2-end-picker') : '';
+  const mode = 'general';
   const expertGroup = document.getElementById('run-expert-group').value || null;
 
   state.analysisMode = mode;
@@ -982,7 +853,7 @@ async function runAnalysis(forceAi = false) {
   document.getElementById('run-result').innerHTML = '';
 
   const res = await api().start_analysis(
-    p1s, p1e, p2s, p2e, expertGroup, mode, forceAi,
+    expertGroup, forceAi,
     Array.from(state.selectedCaseKeys)
   );
   if (!res.ok) {
@@ -1005,13 +876,7 @@ async function cancelAnalysis() {
   document.getElementById('run-result').innerHTML = '<div class="warn-box">تحلیل لغو شد و نتیجه ناقص نمایش داده نمی‌شود.</div>';
 }
 
-function toggleAnalysisMode() {
-  const general = document.getElementById('analysis-mode').value === 'general';
-  ['p1-start-picker', 'p1-end-picker', 'p2-start-picker', 'p2-end-picker'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el && el.closest('.card')) el.closest('.card').style.display = general ? 'none' : '';
-  });
-}
+
 
 async function pollStatus() {
   const status = await api().get_status();
@@ -1104,7 +969,7 @@ function closeChangelog() {
 
 async function refreshAllReports() {
   await Promise.all([
-    loadDashboard(), loadGeneral(), loadComparison(), loadRanking(), loadSuspicious(),
+    loadDashboard(), loadGeneral(), loadRanking(), loadSuspicious(),
     loadDataQuality(), loadMgmtReport(), loadCasesTable(0),
   ]);
 }
@@ -1121,8 +986,6 @@ async function loadCriteria() {
     return;
   }
   state.criteriaConfig = cfg;
-  document.getElementById('ratio-objective').value = cfg.objective_ai_ratio.objective;
-  document.getElementById('ratio-ai').value = cfg.objective_ai_ratio.ai;
   renderCriteria();
   renderEvaluationProfiles();
 }
@@ -1187,6 +1050,7 @@ function renderCriteria() {
     const activeChips = active.map(c => `
       <span class="crit-chip ${c.evaluation_type === 'AI' ? 'ai-type' : ''}" title="${escapeHtml(c.description_fa)}">
         ${c.name_fa} (<span class="crit-weight" onclick="editCriterionWeight('${c.id}')">${fmtWeight(c.weight)}</span> امتیاز)
+        <button class="crit-guide-btn" title="حداقل امتیاز قابل‌قبول؛ بدون مقدار یعنی صرفاً اندازه‌گیری" onclick="editCriterionThreshold('${c.id}')">حدنصاب: ${c.pass_threshold ?? 'تعریف نشده'}</button>
         <button class="crit-guide-btn" title="راهنمای کامل معیار" onclick="showCriterionGuide('${c.id}')">?</button>
         <button class="crit-x" title="حذف از معیارهای فعال" onclick="onCriterionChange('${c.id}', false)">×</button>
       </span>`).join('');
@@ -1264,13 +1128,6 @@ async function onCriterionChange(id, active) {
   crit.active = active;
   await api().update_criterion(id, crit.weight, active);
   renderCriteria();
-}
-
-async function saveRatio() {
-  const o = parseFloat(document.getElementById('ratio-objective').value);
-  const a = parseFloat(document.getElementById('ratio-ai').value);
-  const res = await api().update_ratio(o, a);
-  if (res.ok) toast('نسبت ذخیره شد', 'success'); else toast(res.error, 'error');
 }
 
 async function resetCriteria() {
@@ -1356,48 +1213,12 @@ async function deleteAiKey() {
 ------------------------------------------------------------------------ */
 async function loadDashboard() {
   const d = await api().get_dashboard();
+  document.getElementById('dashboard-empty').style.display = d.ok ? 'none' : 'block';
+  document.getElementById('dashboard-content').style.display = d.ok ? 'block' : 'none';
   if (!d.ok) return;
-  document.getElementById('dashboard-empty').style.display = 'none';
-  document.getElementById('dashboard-content').style.display = 'block';
-
-  const kpi = (label, value, extra) => `
-    <div class="card kpi"><div class="label">${label}</div><div class="value ${typeof value === 'string' && value.length > 6 ? 'small' : ''}">${value}</div>${extra || ''}</div>`;
-
-  document.getElementById('dashboard-kpis').innerHTML = [
-    kpi(d.unit === 'task' ? 'تعداد Task' : 'تعداد مورد', d.total_cases),
-    kpi('تعداد کارشناسان', d.total_experts),
-    kpi('تعداد Note', d.total_notes),
-    kpi('تعداد Task', d.total_tasks),
-    kpi('شاخص سلامت داده', fmt(d.data_quality) + '%'),
-    kpi('امتیاز دوره اول', fmt(d.period1_score)),
-    kpi('امتیاز دوره دوم', fmt(d.period2_score)),
-    kpi('تغییر', (d.improvement_pct === null ? '—' : fmt(d.improvement_pct) + '%'),
-      `<div class="delta ${d.improvement_pct > 0 ? 'up' : (d.improvement_pct < 0 ? 'down' : 'flat')}">${d.improvement_pct > 0 ? '▲' : (d.improvement_pct < 0 ? '▼' : '—')}</div>`),
-  ].join('');
-
-  if (d.mode === 'general') {
-    drawChart('chart-categories', 'bar', {
-      labels: d.category_chart.map(c => c.name),
-      datasets: [{ label: 'تحلیل کلی', data: d.category_chart.map(c => c.value), backgroundColor: '#1f4e78' }],
-    });
-    drawChart('chart-overall', 'line', {
-      labels: ['تحلیل کلی'],
-      datasets: [{ label: 'امتیاز کلی', data: [d.general_score], borderColor: '#2f80ed', backgroundColor: '#eaf1f8', fill: true }],
-    });
-    return;
-  }
-  drawChart('chart-categories', 'bar', {
-    labels: d.category_chart.map(c => c.name),
-    datasets: [
-      { label: 'دوره اول', data: d.category_chart.map(c => c.period1), backgroundColor: '#8fb3d9' },
-      { label: 'دوره دوم', data: d.category_chart.map(c => c.period2), backgroundColor: '#1f4e78' },
-    ],
-  });
-
-  drawChart('chart-overall', 'line', {
-    labels: ['دوره اول', 'دوره دوم'],
-    datasets: [{ label: 'امتیاز کلی', data: [d.period1_score, d.period2_score], borderColor: '#2f80ed', backgroundColor: '#eaf1f8', fill: true, tension: 0.3 }],
-  });
+  const cards = [['موارد منتخب', d.total_cases], ['یادداشت‌ها', d.total_notes], ['فعالیت‌ها', d.total_tasks], ['سلامت داده', d.data_quality]];
+  document.getElementById('dashboard-kpis').innerHTML = cards.map(([label, value]) => `<div class="card kpi"><div class="label">${label}</div><div class="value">${fmt(value)}</div></div>`).join('');
+  drawChart('chart-categories', 'bar', {labels: d.category_chart.map(c => c.name), datasets: [{label: 'ارزیابی کیفی', data: d.category_chart.map(c => c.value), backgroundColor: '#4f46e5'}]});
 }
 
 async function loadGeneral() {
@@ -1458,25 +1279,7 @@ function drawChart(canvasId, type, data) {
 /* ------------------------------------------------------------------------
    Comparison
 ------------------------------------------------------------------------ */
-async function loadComparison() {
-  const c = await api().get_comparison();
-  if (!c.ok) {
-    document.getElementById('comparison-empty').style.display = 'block';
-    document.getElementById('comparison-content').style.display = 'none';
-    return;
-  }
-  document.getElementById('comparison-empty').style.display = 'none';
-  document.getElementById('comparison-content').style.display = 'block';
-  document.getElementById('comparison-narrative').innerHTML = `<h3>تحلیل علت تغییر</h3><p>${c.narrative}</p>`;
 
-  document.getElementById('comparison-cat-body').innerHTML = c.categories.map(row => `
-    <tr><td>${row.name_fa}</td><td>${fmt(row.period1)}</td><td>${fmt(row.period2)}</td><td>${deltaBadge(row.change)}</td></tr>
-  `).join('');
-
-  document.getElementById('comparison-crit-body').innerHTML = c.criteria.map(row => `
-    <tr><td>${row.name_fa}</td><td>${fmt(row.period1)}</td><td>${fmt(row.period2)}</td><td>${deltaBadge(row.change)}</td></tr>
-  `).join('');
-}
 
 /* ------------------------------------------------------------------------
    Ranking
@@ -1488,10 +1291,9 @@ async function loadRanking() {
   document.getElementById('ranking-content').style.display = 'block';
   document.getElementById('ranking-body').innerHTML = r.rows.map(row => `
     <tr class="clickable" onclick="showExpertDetail('${row.expert.replace(/'/g, "\\'")}')">
-      <td>${row.expert}</td><td>${fmt(row.score !== undefined ? row.score : row.period1_score)}</td>
-      <td>${fmt(row.period2_score)}</td><td>${deltaBadge(row.change)}</td>
+      <td>${escapeHtml(row.expert)}</td>
       <td><span class="badge ${statusBadgeClass(row.status)}">${row.status}</span></td>
-      <td>${row.cases !== undefined ? row.cases : row.period2_cases}</td>
+      <td>${row.cases}</td>
     </tr>`).join('');
 }
 
@@ -1531,25 +1333,21 @@ async function showExpertDetail(expert) {
         <tr><td>تعداد مورد</td><td>${s.case_count}</td></tr>
         <tr><td>تعداد Note</td><td>${s.note_count}</td></tr>
         <tr><td>تعداد Task</td><td>${s.task_count}</td></tr>
-        <tr><td>Objective</td><td>${fmt(s.avg_objective)}</td></tr>
-        <tr><td>AI</td><td>${fmt(s.avg_ai)}</td></tr>
-        <tr><td>Final</td><td><b>${fmt(s.avg_final)}</b></td></tr>
+        <tr><td colspan="2">این شمارش حجم کار است؛ کیفیت مورد بدون تاریخچه معتبر به فرد نسبت داده نمی‌شود.</td></tr>
       </table>
       ${s.weak_criteria.length ? `<div style="margin-top:8px"><b style="font-size:12px">ضعف‌های تکرارشونده:</b> <div class="chip-list" style="margin-top:6px">${s.weak_criteria.map(w => `<span class="chip">${w[0]} (${w[1]})</span>`).join('')}</div></div>` : ''}
       ${s.strong_criteria.length ? `<div style="margin-top:8px"><b style="font-size:12px">نقاط قوت:</b> <div class="chip-list" style="margin-top:6px">${s.strong_criteria.map(w => `<span class="chip">${w[0]} (${w[1]})</span>`).join('')}</div></div>` : ''}
       </div>`;
   };
 
-  document.getElementById('expert-detail-stats').innerHTML = d.general
-    ? statCard('تحلیل کلی', d.general)
-    : statCard('دوره اول', d.period1) + statCard('دوره دوم', d.period2);
+  document.getElementById('expert-detail-stats').innerHTML = statCard('موارد مرتبط؛ بدون انتساب قطعی عملکرد', d.general);
 
   const fbBox = document.getElementById('expert-feedback-box');
   if (d.feedback && (d.feedback.strengths.length || d.feedback.weaknesses.length)) {
     const fb = d.feedback;
     fbBox.style.display = 'block';
     fbBox.innerHTML = `
-      <h3>گزارش عملکرد و بازخورد (دوره دوم در صورت وجود داده، وگرنه دوره اول)</h3>
+      <h3>بازخورد موارد مرتبط؛ بدون رتبه‌بندی قطعی فرد</h3>
       <div class="grid cols-2">
         <div>
           <b style="font-size:12.5px">نقاط قوت</b>
@@ -1572,9 +1370,8 @@ async function showExpertDetail(expert) {
   }
 
   document.getElementById('expert-cases-body').innerHTML = d.cases.map(c => `
-    <tr class="clickable" onclick="openCaseDetail('${c.case_key.replace(/'/g, "\\'")}','period2')">
+    <tr class="clickable" onclick="openCaseDetail('${c.case_key.replace(/'/g, "\\'")}','general')">
       <td>${c.case_number || '—'}</td><td>${c.case_title || '—'}</td>
-      <td><span class="badge ${scoreBadgeClass(c.final_score)}">${fmt(c.final_score)}</span></td>
     </tr>`).join('');
 }
 
@@ -1686,7 +1483,7 @@ async function loadExpertGroupsSettings() {
 /* --------------------------------------------------------- Default groups */
 async function loadDefaultGroupSuggestions() {
   const box = document.getElementById('default-groups-suggestions');
-  if (!state.datasetLoaded) { toast('ابتدا فایل‌ها را بارگذاری کنید', 'error'); return; }
+  if (!state.datasetLoaded) { toast('ابتدا داده CRM را دریافت یا بازیابی کنید', 'error'); return; }
   box.innerHTML = '<div class="warn-box">در حال بررسی تطبیق نام‌ها...</div>';
   const res = await api().suggest_default_groups();
   if (!res.ok) { box.innerHTML = `<div class="err-box">${res.error}</div>`; return; }
@@ -1793,15 +1590,14 @@ async function loadCasesTable(page) {
 
   const isTask = res.unit === 'task';
   document.getElementById('cases-table-head').innerHTML = isTask
-    ? '<tr><th>شماره Task</th><th>عنوان</th><th>نوع مورد</th><th>کارشناس</th><th colspan="2">—</th><th>Objective</th><th>AI</th><th>Final</th><th>آخرین واکشی</th><th>آخرین تحلیل</th></tr>'
-    : '<tr><th>شماره مورد</th><th>عنوان</th><th>نوع مورد</th><th>کارشناس</th><th>Note</th><th>Task</th><th>Objective</th><th>AI</th><th>Final</th><th>آخرین واکشی</th><th>آخرین تحلیل</th></tr>';
+    ? '<tr><th>شماره فعالیت</th><th>عنوان</th><th>نوع مورد</th><th>مالک فعلی</th><th colspan="2">—</th><th>معیارهای Rule</th><th>معیارهای AI</th><th>آخرین واکشی</th><th>آخرین تحلیل</th></tr>'
+    : '<tr><th>شماره مورد</th><th>عنوان</th><th>نوع مورد</th><th>مالک فعلی</th><th>یادداشت</th><th>فعالیت</th><th>معیارهای Rule</th><th>معیارهای AI</th><th>آخرین واکشی</th><th>آخرین تحلیل</th></tr>';
 
   document.getElementById('cases-table-body').innerHTML = res.rows.map(r => `
     <tr class="clickable" onclick="openCaseDetail('${r.case_key.replace(/'/g, "\\'")}','${period}')">
       <td>${r.case_number || '—'}</td><td>${r.case_title || '—'}</td><td>${r.service || '—'}</td><td>${r.expert}</td>
       ${isTask ? '<td colspan="2">—</td>' : `<td>${r.notes}</td><td>${r.tasks}</td>`}
       <td>${fmt(r.objective_score)}</td><td>${r.ai_analyzed ? `<span class="badge good" title="تحلیل AI قبلاً انجام شده است">${fmt(r.ai_score)} ✓</span>` : '<span class="badge muted">انجام نشده</span>'}</td>
-      <td><span class="badge ${scoreBadgeClass(r.final_score)}">${fmt(r.final_score)}</span></td>
       <td>${dateDual(r.last_fetched_at)}</td><td>${dateDual(r.last_analyzed_at)}</td>
     </tr>`).join('');
   const start = page * state.casesPageSize;
@@ -1887,7 +1683,7 @@ async function openCaseDetail(caseKey, period) {
 
   if (d.breakdown) {
     document.getElementById('case-score-summary').innerHTML = [
-      ['Objective', d.breakdown.objective_score], ['AI', d.breakdown.ai_score], ['Final', d.breakdown.final_score],
+      ['معیارهای Rule', d.breakdown.objective_score], ['معیارهای AI', d.breakdown.ai_score],
       ['Coverage', `${Math.round((d.breakdown.coverage || 0) * 100)}%`],
       ['Confidence', d.breakdown.confidence || '—'],
       ['نتیجه AI موجود؟', d.ai_analyzed ? 'بله' : 'خیر'],
@@ -2070,7 +1866,7 @@ function renderCaseAiSuggestions(items) {
 
 function renderCaseBreakdown(breakdown) {
   document.getElementById('case-score-summary').innerHTML = [
-    ['Objective', breakdown.objective_score], ['AI', breakdown.ai_score], ['Final', breakdown.final_score],
+    ['معیارهای Rule', breakdown.objective_score], ['معیارهای AI', breakdown.ai_score],
     ['Coverage', `${Math.round((breakdown.coverage || 0) * 100)}%`],
     ['Confidence', breakdown.confidence || '—'],
     ['نتیجه AI موجود؟', breakdown.ai_used ? 'بله' : 'خیر'],
@@ -2185,6 +1981,7 @@ async function loadSuspiciousRules() {
   const res = await api().get_suspicious_rules();
   const box = document.getElementById('suspicious-rules-list');
   if (!box || !res?.rules) return;
+  if (res.retired) { box.textContent = res.message; return; }
   box.innerHTML = res.rules.map(rule => `
     <div class="card suspicious-rule-setting" data-rule-id="${escapeHtml(rule.id)}">
       <label class="inline-check"><input type="checkbox" class="suspicious-rule-active" ${rule.active ? 'checked' : ''}> <b>${escapeHtml(rule.name_fa)}</b></label>
@@ -2271,8 +2068,6 @@ async function loadMgmtReport() {
   document.getElementById('mgmt-strengths').innerHTML = r.top_strengths.length
     ? r.top_strengths.map(s => `<span class="chip">${s}</span>`).join('') : '<span style="color:var(--muted)">موردی شناسایی نشد.</span>';
   document.getElementById('mgmt-weaknesses').innerHTML = r.top_weaknesses.map(w => `<span class="chip">${w.name} (${fmt(w.score)})</span>`).join('');
-  document.getElementById('mgmt-improved').innerHTML = r.most_improved.map(e => `<li>${e.expert}: +${fmt(e.change)}</li>`).join('') || '<li style="color:var(--muted)">موردی نیست</li>';
-  document.getElementById('mgmt-declined').innerHTML = r.most_declined.map(e => `<li>${e.expert}: ${fmt(e.change)}</li>`).join('') || '<li style="color:var(--muted)">موردی نیست</li>';
   document.getElementById('mgmt-data-issues').innerHTML = r.data_issues.length
     ? r.data_issues.map(s => `<span class="chip">${s}</span>`).join('') : '<span style="color:var(--muted)">مشکل قابل‌توجهی نیست.</span>';
   document.getElementById('mgmt-recs').innerHTML = r.recommendations.map(x => `<li>${x}</li>`).join('');
@@ -2339,10 +2134,6 @@ function initApp() {
     if (statusBox) statusBox.textContent = `خطا در بازیابی داده محلی CRM: ${error.message || error}`;
   });
   // هیچ منبع داده‌ای هنگام شروع خودکار خوانده نمی‌شود؛ کاربر باید منبع را صریحاً انتخاب کند.
-  buildJalaliPicker('p1-start-picker');
-  buildJalaliPicker('p1-end-picker');
-  buildJalaliPicker('p2-start-picker');
-  buildJalaliPicker('p2-end-picker');
   api().get_version().then(v => {
     document.getElementById('app-version').textContent = 'نگارش: ' + v;
   }).catch(() => {});

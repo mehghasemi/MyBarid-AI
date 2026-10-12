@@ -38,6 +38,16 @@ Return JSON only in this shape:
 Criteria:
 {criteria_list}
 
+Use a consistent qualitative rubric: 0 = an evidenced failure, 25 = major
+evidenced omissions, 50 = partly supported, 75 = adequately supported,
+100 = fully supported including verification and continuity of work.
+These are descriptive score anchors, not management pass thresholds.
+Return null for unavailable evidence; do not treat absence as an evidenced failure.
+For an open or waiting case, do not demand a final outcome that is not yet due.
+Without a technical reference, assess consistency of the proposed solution,
+not its definitive technical correctness. Every numeric score requires an
+existing note/task event_id. Do not invent references.
+
 After the criteria, optionally return improvement suggestions based only on
 repeated or concrete evidence in this Case. Suggestions are proposals only;
 never change a Rule or score. Use only these criterion IDs:

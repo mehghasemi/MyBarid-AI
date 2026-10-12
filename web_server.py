@@ -26,15 +26,15 @@ ROLE_PERMISSIONS = {
     "analyst": {
         "get_version", "get_changelog", "get_crm_settings", "get_dataset_info", "get_analysis_info",
         "get_crm_sync_status", "get_dataset_case_keys", "get_dataset_cases", "start_analysis",
-        "cancel_analysis", "get_status", "get_dashboard", "get_comparison", "get_ranking",
+        "cancel_analysis", "get_status", "get_dashboard", "get_ranking",
         "get_expert_detail", "get_expert_report", "get_case_detail", "get_cases_table",
-        "get_suspicious", "get_data_quality", "get_management_report", "get_current_user",
+        "get_suspicious", "get_data_quality", "get_management_report", "get_current_user", "get_management_evaluation", "record_management_action",
     },
     "viewer": {
         "get_version", "get_changelog", "get_crm_settings", "get_dataset_info", "get_analysis_info",
-        "get_dashboard", "get_comparison", "get_ranking", "get_expert_detail", "get_expert_report",
+        "get_dashboard", "get_ranking", "get_expert_detail", "get_expert_report",
         "get_case_detail", "get_cases_table", "get_suspicious", "get_data_quality",
-        "get_management_report", "get_current_user",
+        "get_management_report", "get_current_user", "get_management_evaluation",
     },
 }
 

@@ -4,6 +4,7 @@ import hashlib
 import json
 import time
 from typing import Callable
+from dataclasses import asdict
 
 from ai.prompts import build_case_prompt, build_system_prompt
 from ai.providers import AIProviderError, AIQuotaError, AISettings, get_provider
@@ -24,6 +25,14 @@ class AnalysisCancelled(Exception):
     """Raised when the user cancels a running dataset analysis."""
 
 
+class EvidenceScore(tuple):
+    def __new__(cls, score, evidence, source_events=None, confidence="low"):
+        value = super().__new__(cls, (score, evidence))
+        value.source_events = source_events or []
+        value.confidence = confidence
+        return value
+
+
 def _case_signature(case: CaseBundle, ai_criteria, settings: AISettings) -> str:
     criteria_fingerprint = repr([
         (c.id, c.name_fa, c.evaluation_type, getattr(c, "prompt_fa", None),
@@ -41,6 +50,14 @@ def _case_signature(case: CaseBundle, ai_criteria, settings: AISettings) -> str:
         parts.append(f"N|{n.note_date}|{n.description}")
     for t in case.tasks:
         parts.append(f"T|{t.created_on}|{t.description}")
+    parts.append("criteria-v3-evidence")
+    parts.append(json.dumps([asdict(c) for c in ai_criteria], ensure_ascii=False, sort_keys=True, default=str))
+    parts.append(json.dumps({"status": case.status, "status_reason": case.status_reason,
+                             "owner": case.owner, "service": case.service,
+                             "description": case.case_description,
+                             "notes": [asdict(n) for n in case.notes],
+                             "tasks": [asdict(t) for t in case.tasks]},
+                            ensure_ascii=False, sort_keys=True, default=str))
     raw = "\n".join(str(p) for p in parts)
     return hashlib.sha256(raw.encode("utf-8", "ignore")).hexdigest()
 
@@ -62,7 +79,8 @@ def analyze_case(
         try:
             cached = db.get_ai_cache(sig)
             if cached:
-                cached_scores = _payload_to_scores(cached, criteria_ids)
+                cached_valid, _ = validate_case_analysis(cached, criteria_ids, case)
+                cached_scores = _payload_to_scores(cached, criteria_ids) if cached_valid else {}
                 if cached_scores:
                     db.set_ai_suggestions(sig, _extract_improvement_suggestions(cached))
                     db.record_ai_analysis(
@@ -106,7 +124,7 @@ def analyze_case(
             last_error = "خروجی AI یک JSON معتبر نبود."
             return {}, last_error
         try:
-            valid, problems = validate_case_analysis(payload, criteria_ids)
+            valid, problems = validate_case_analysis(payload, criteria_ids, case)
         except Exception as exc:  # noqa: BLE001
             last_error = "ساختار پاسخ AI قابل بررسی نبود؛ پاسخ معتبر برای معیارها دریافت نشد."
             continue
@@ -146,6 +164,10 @@ def is_case_ai_analyzed(
         return False
     try:
         cached = db.get_ai_cache(_case_signature(case, ai_criteria, settings))
+        if cached:
+            valid, _ = validate_case_analysis(cached, [c.id for c in ai_criteria], case)
+            if not valid:
+                return False
         return bool(cached and _payload_to_scores(cached, [c.id for c in ai_criteria]))
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         return False
@@ -171,7 +193,7 @@ def _payload_to_scores(
                 item.get("evidence", ""), item.get("source_events", [])
             )
             if isinstance(score, (int, float)):
-                result[cid] = (float(score), evidence_text)
+                result[cid] = EvidenceScore(float(score), evidence_text, item.get("source_events"), item.get("confidence", "low"))
             elif item.get("na_reason"):
                 result[cid] = (None, str(item["na_reason"]))
         elif isinstance(scores.get(cid), (int, float)):

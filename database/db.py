@@ -15,6 +15,7 @@ import pickle
 import sqlite3
 import sys
 from pathlib import Path
+from datetime import datetime
 
 APP_NAME = "CRMQualityReviewer"
 PORTABLE_DIR_NAME = "MyBarid-AI-Portable"
@@ -266,7 +267,7 @@ def get_local_analysis_record():
             "result": value, "dataset_id": None, "view_name": None,
             "saved_at": row["saved_at"], "dataset_id_version": 1,
         }
-    except (pickle.PickleError, EOFError, TypeError, ValueError, AttributeError):
+    except (pickle.PickleError, EOFError, TypeError, ValueError, AttributeError, ImportError):
         return None
     finally:
         conn.close()
@@ -458,3 +459,22 @@ def mask_key(key: str) -> str:
     if len(key) <= 8:
         return "•" * len(key)
     return key[:4] + "•" * (len(key) - 8) + key[-4:]
+
+
+def save_management_action(case_key, criterion_id, decision, responsible, due_at, evaluation_at):
+    with get_connection() as connection:
+        connection.execute("""CREATE TABLE IF NOT EXISTS management_actions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            case_key TEXT NOT NULL, criterion_id TEXT NOT NULL,
+            decision TEXT NOT NULL, responsible TEXT NOT NULL, due_at TEXT NOT NULL,
+            evaluation_at TEXT, recorded_at TEXT NOT NULL)""")
+        connection.execute("""INSERT INTO management_actions
+            (case_key, criterion_id, decision, responsible, due_at, evaluation_at, recorded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (case_key, criterion_id, decision, responsible, due_at, evaluation_at, datetime.now().isoformat()))
+
+
+def get_management_actions():
+    with get_connection() as connection:
+        exists = connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='management_actions'").fetchone()
+        return [dict(row) for row in connection.execute("SELECT * FROM management_actions ORDER BY id DESC")] if exists else []

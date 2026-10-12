@@ -165,7 +165,7 @@ def task_presence_when_needed(case: CaseBundle, settings: dict | None = None) ->
         return RuleResult(None, "N/A / Insufficient Evidence: داده معتبر برای الزام ارجاع به لایه دو یا ایجاد Task وجود ندارد.")
     if case.tasks:
         return RuleResult(100.0, f"ارجاع به لایه دو در داده ثبت شده و {len(case.tasks)} Task وجود دارد.")
-    return RuleResult(0.0, "ارجاع به لایه دو در داده ثبت شده، اما Task متناظر وجود ندارد.")
+    return RuleResult(None, "نبود Task به‌تنهایی تخلف نیست؛ کامل‌بودن دریافت فعالیت‌ها و الزام سازمانی ایجاد Task باید تأیید شود.")
 
 
 def task_case_relation(case: CaseBundle) -> RuleResult:
@@ -210,78 +210,10 @@ def task_result_recorded(case: CaseBundle, settings: dict | None = None) -> Rule
 
 # ------------------------------------------------------------ Timing -----
 
-def first_response_time(case: CaseBundle, settings: dict | None = None) -> RuleResult:
-    anchor = case.created_on or (min((n.note_date for n in case.notes if n.note_date), default=None))
-    staff_set = set(id(n) for n in _staff_notes(case))
-    staff_events = [(kind, when, obj) for kind, when, obj in case.all_events_sorted
-                    if kind == "task" or (kind == "note" and id(obj) in staff_set)]
-    if not anchor or not staff_events:
-        return RuleResult(None, "زمان ایجاد Case یا اولین اقدام کارشناسی مشخص نیست.")
-    first_when = staff_events[0][1]
-    delta_hours = (first_when - anchor).total_seconds() / 3600
-    if delta_hours < 0:
-        return RuleResult(None, "ترتیب زمانی نامعتبر است (اولین اقدام قبل از ایجاد Case ثبت شده).")
-    t = _thresholds(settings)
-    fast = t.get("first_response_fast_hours", 4)
-    normal = t.get("first_response_normal_hours", 24)
-    late = t.get("first_response_late_hours", 72)
-    if delta_hours <= fast:
-        score, note = 100, "اولین اقدام کارشناسی ظرف ۴ ساعت انجام شده."
-    elif delta_hours <= normal:
-        score, note = 80, "اولین اقدام کارشناسی ظرف یک روز کاری انجام شده."
-    elif delta_hours <= late:
-        score, note = 55, "اولین اقدام کارشناسی با تأخیر (تا ۳ روز) انجام شده."
-    else:
-        score, note = 25, "اولین اقدام کارشناسی با تأخیر قابل‌توجه (بیش از ۳ روز) انجام شده."
-    return RuleResult(score, f"{note} ({round(delta_hours,1)} ساعت فاصله)")
 
 
-def followup_delay(case: CaseBundle, settings: dict | None = None) -> RuleResult:
-    pending = [t for t in case.tasks if (t.follow_up_needed or "").strip().casefold() == "yes" and t.next_follow_up]
-    if not pending:
-        return RuleResult(None, "Task دارای Follow-up برنامه‌ریزی‌شده برای این Case وجود ندارد.")
-    events = case.all_events_sorted
-    penalties = []
-    for t in pending:
-        later = [when for _, when, _ in events if when and when > t.next_follow_up]
-        if not later:
-            penalties.append(0)
-            continue
-        gap_days = (later[0] - t.next_follow_up).total_seconds() / 86400
-        t = _thresholds(settings)
-        on_time = t.get("followup_on_time_days", 1)
-        delayed = t.get("followup_delayed_days", 3)
-        if gap_days <= on_time:
-            penalties.append(100)
-        elif gap_days <= delayed:
-            penalties.append(65)
-        else:
-            penalties.append(25)
-    score = round(sum(penalties) / len(penalties))
-    evidence = f"از {len(pending)} پیگیری برنامه‌ریزی‌شده، میانگین رعایت زمان {score} از ۱۰۰ است."
-    return RuleResult(score, evidence)
 
 
-def due_date_compliance(case: CaseBundle, settings: dict | None = None) -> RuleResult:
-    with_due = [t for t in case.tasks if t.due_date]
-    if not with_due:
-        return RuleResult(None, "Task دارای Due Date برای این Case وجود ندارد.")
-    scores = []
-    for t in with_due:
-        finish = t.actual_start or t.created_on
-        if not finish:
-            continue
-        gap_hours = (finish - t.due_date).total_seconds() / 3600
-        if gap_hours <= 0:
-            scores.append(100)
-        elif gap_hours <= _thresholds(settings).get("due_date_grace_hours", 24):
-            scores.append(70)
-        else:
-            scores.append(30)
-    if not scores:
-        return RuleResult(None, "امکان محاسبه رعایت Due Date وجود ندارد.")
-    score = round(sum(scores) / len(scores))
-    return RuleResult(score, f"میانگین رعایت Due Date برای {len(scores)} Task: {score} از ۱۰۰.")
 
 
 def unusual_time_gap(case: CaseBundle, settings: dict | None = None) -> RuleResult:
@@ -327,7 +259,7 @@ def scenario_recorded(case: CaseBundle, settings: dict | None = None) -> RuleRes
 def timeline_reconstructable(case: CaseBundle) -> RuleResult:
     events = case.all_events_sorted
     if len(events) < 1:
-        return RuleResult(0.0, "هیچ رویداد دارای تاریخ معتبر برای این Case ثبت نشده است.")
+        return RuleResult(None, "رویداد دارای تاریخ معتبر دریافت نشده؛ نبود داده معادل ضعف عملکرد نیست.")
     if len(events) == 1:
         return RuleResult(55.0, "فقط یک رویداد دارای تاریخ ثبت شده؛ بازسازی روند محدود است.")
     return RuleResult(95.0, f"{len(events)} رویداد به‌ترتیب زمانی قابل بازسازی است.")
@@ -368,8 +300,10 @@ def task_std_followup_handled(case: CaseBundle) -> RuleResult:
         return RuleResult(None, "این Task نیاز به Follow-up نداشته است.")
     if t.next_follow_up:
         return RuleResult(100.0, "تاریخ Follow-up بعدی برای این Task ثبت شده است.")
-    return RuleResult(20.0, "این Task نیاز به Follow-up داشته اما تاریخ Follow-up بعدی ثبت نشده است.")
+    return RuleResult(None, "نیاز پیگیری ثبت شده ولی موعد معتبر و الزام ثبت آن برای قضاوت در دسترس نیست.")
 
+
+from analysis.timing import first_response_time, followup_delay, due_date_compliance
 
 RULE_FUNCTIONS_TASK = {
     "task_std_description_quality": task_description_quality,

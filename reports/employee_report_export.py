@@ -72,12 +72,7 @@ def export_expert_report_excel(path: str, report: dict) -> None:
 
     write_section("خلاصه عملکرد")
     write_row(f"تعداد {unit_label} بررسی‌شده", s["case_count"])
-    write_row("امتیاز Objective (Rule-Based)", s["avg_objective"])
-    write_row("امتیاز AI", s["avg_ai"])
-    write_row("امتیاز نهایی (Final Score)", s["avg_final"])
-    write_row("تغییر نسبت به دوره قبل", s["change_vs_previous"])
-    write_row("میانگین تیم در همین دوره", s["team_average"])
-    write_row("فاصله با میانگین تیم", s["vs_team_average"])
+    write_row("محدودیت انتساب", "مالک فعلی؛ کیفیت تاریخی بدون تاریخچه معتبر به فرد نسبت داده نمی‌شود.")
     blank()
 
     ms = report["management_summary"]

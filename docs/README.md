@@ -5,6 +5,8 @@
 
 ## اسناد
 
+- [قرارداد جاری ارزیابی مدیریتی و محدودیت‌های نسخه ۱.۹.۹۵](management-evaluation.md) — مرجع مقدم بر توضیحات تاریخی Excel و مقایسه دوره‌ها.
+
 - [نمای کلی سیستم](system-overview.md)
 - [معماری سیستم](architecture.md)
 - [ساختار Repository](repository-structure.md)

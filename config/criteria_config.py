@@ -26,6 +26,7 @@ class Criterion:
     interpretation_fa: str = ""
     example_fa: str = ""
     limitations_fa: str = ""
+    pass_threshold: float | None = None
 
 
 @dataclass
@@ -203,6 +204,7 @@ def load_criteria_config(path: str | Path | None = None) -> CriteriaConfig:
                     unit=criterion.get("unit", "case"),
                     layer=criterion.get("layer", category.get("layer", "performance")),
                     na_policy=criterion.get("na_policy", "exclude"),
+                    pass_threshold=criterion.get("pass_threshold"),
                     **guides.get(criterion["id"], {}),
                 )
                 for criterion in category["criteria"]
@@ -219,6 +221,16 @@ def load_criteria_config(path: str | Path | None = None) -> CriteriaConfig:
         )
         for item in raw.get("evaluation_profiles", [])
     ] or DEFAULT_EVALUATION_PROFILES
+    # Retire length/word/keyword proxies. Preserve the user's original file;
+    # normalize effective criteria in memory so snapshots remain readable.
+    retired = {"notes_clarity", "notes_writing_quality", "task_description_quality", "scenario_recorded"}
+    semantic = {"notes_completeness", "notes_result_recorded", "task_result_recorded", "final_status_clear"}
+    for category in categories:
+        for criterion in category.criteria:
+            if criterion.id in retired:
+                criterion.active = False
+            elif criterion.id in semantic:
+                criterion.evaluation_type = "AI"
     return CriteriaConfig(
         objective_ai_ratio=raw["objective_ai_ratio"],
         categories=categories,

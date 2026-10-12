@@ -769,9 +769,7 @@ label.field-label { display:block; font-size: 12px; color: var(--muted); margin-
 .toast.error { background: var(--bad); }
 .toast.success { background: var(--good); }
 
-#p1-start-picker select, #p1-end-picker select, #p2-start-picker select, #p2-end-picker select {
-  font-size: 12.5px; padding: 7px 6px;
-}
+
 
 .suggestion-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
 .suggestion-row .target { width: 150px; font-weight: 500; }

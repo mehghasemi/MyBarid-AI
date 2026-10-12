@@ -17,13 +17,12 @@ from analysis.suspicious import normalized_rule_settings, SUSPICIOUS_RULE_INFO
 from analysis.rule_settings import normalize_analysis_rules, DEFAULT_ANALYSIS_RULES, RULE_SETTING_INFO
 from config.criteria_config import Category, Criterion, CriteriaConfig, load_criteria_config, save_criteria_config
 import webview
-from data.loader import ExcelLoadError
 from database import db
 from crm_client import (
     DEFAULT_API_VERSION, DEFAULT_BASE_URL, DEFAULT_ORGANIZATION, DEFAULT_VIEW_NAME,
     CRMClientError, DynamicsCRMClient, dataset_from_payload, dataset_to_payload,
 )
-from pipeline import Dataset, run_full_analysis, run_general_analysis
+from pipeline import Dataset, run_general_analysis
 from analysis.scoring import score_case
 import pipeline as pipeline_mod
 from reports.csv_export import export_csv
@@ -69,19 +68,67 @@ def _dataset_id(snapshot: dict | None) -> str | None:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _parse_period_bound(value: str, end: bool) -> datetime:
-    """ورودی می‌تواند فقط تاریخ («YYYY-MM-DD») یا تاریخ+ساعت باشد. اگر فقط
-    تاریخ داده شود (رفتار جدید UI که ساعت را حذف کرده)، برای شروع بازه
-    ساعت ۰۰:۰۰:۰۰ و برای پایان بازه ساعت ۲۳:۵۹:۵۹ در نظر گرفته می‌شود تا کل
-    همان روز پوشش داده شود."""
-    dt = datetime.fromisoformat(value)
-    if "T" not in value and " " not in value:  # فقط تاریخ، بدون بخش ساعت
-        if end:
-            dt = dt.replace(hour=23, minute=59, second=59)
-    return dt
 
 
 class Api:
+    def get_management_evaluation(self) -> dict:
+        if not self.result or "quantitative" not in self.result:
+            return {"ok": False, "error": "برای این Snapshot هنوز ارزیابی با نسخه جدید معیارها اجرا نشده است."}
+        return {"ok": True, "evaluation_at": self.result.get("evaluation_at"),
+                "criteria_version": "3.0", "scope": "فقط موارد منتخب از View؛ آمار کل سازمان نیست",
+                "cases": self.result["quantitative"], "queue": self.result["management_queue"],
+                "summary": self.result.get("management_summary", {}),
+                "catalog": self.result.get("criterion_catalog", []),
+                "severity_settings": db.get_setting("management_severities", {}),
+                "status_mapping": db.get_setting("crm_status_mapping", {}),
+                "thresholds": db.get_setting("management_thresholds", {}), "actions": db.get_management_actions(),
+                "attribution_notice": self.result.get("attribution_notice")}
+
+    def save_management_thresholds(self, thresholds: dict) -> dict:
+        from analysis.management import METRICS
+        import math
+        if not isinstance(thresholds, dict):
+            return {"ok": False, "error": "ساختار حدنصاب‌ها معتبر نیست."}
+        checked = {}
+        for key, value in thresholds.items():
+            if key not in METRICS:
+                return {"ok": False, "error": "معیار ناشناخته است."}
+            if value is None or value == "":
+                continue
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "حدنصاب باید عدد نامنفی باشد."}
+            if not math.isfinite(number) or number < 0:
+                return {"ok": False, "error": "حدنصاب باید عدد نامنفی و محدود باشد."}
+            checked[key] = number
+        db.set_setting("management_thresholds", checked)
+        return {"ok": True, "message": "حدنصاب‌ها ذخیره شد؛ از ارزیابی بعدی اعمال می‌شود."}
+
+    def save_management_severities(self, values: dict) -> dict:
+        from config.criterion_catalog import criterion_catalog
+        allowed = {item["id"] for item in criterion_catalog(self.config)}
+        if not isinstance(values, dict) or any(key not in allowed or value not in {"info", "warning", "critical"}
+                                             for key, value in values.items()):
+            return {"ok": False, "error": "شناسه معیار یا شدت معتبر نیست."}
+        db.set_setting("management_severities", values)
+        return {"ok": True, "message": "شدت معیارها ذخیره شد؛ از ارزیابی بعدی اعمال می‌شود."}
+
+    def record_management_action(self, case_key: str, criterion_id: str, decision: str,
+                                 responsible: str, due_at: str) -> dict:
+        if not self.result or not any(row["case_key"] == case_key and row["criterion"]["id"] == criterion_id
+                                       for row in self.result.get("management_queue", [])):
+            return {"ok": False, "error": "مورد و معیار باید در صف بررسی موجود باشند."}
+        if not decision.strip() or not responsible.strip():
+            return {"ok": False, "error": "شرح تصمیم و مسئول اقدام الزامی است."}
+        try:
+            datetime.fromisoformat(due_at)
+        except (ValueError, TypeError):
+            return {"ok": False, "error": "موعد اقدام معتبر نیست."}
+        db.save_management_action(case_key, criterion_id, decision.strip(), responsible.strip(), due_at,
+                                  self.result.get("evaluation_at"))
+        return {"ok": True}
+
     def __init__(self):
         self.window = None
         self.dataset: Dataset | None = None
@@ -90,7 +137,6 @@ class Api:
         self.suspicious_rules = normalized_rule_settings(db.get_setting("suspicious_rules", {}))
         self.analysis_rules = normalize_analysis_rules(db.get_setting("analysis_rules", {}))
         self.result: dict | None = None
-        self.last_periods: tuple | None = None
         self.status = {"running": False, "done": False, "stage": "", "current": 0, "total": 0, "error": None}
         self._analysis_generation = 0
         self._analysis_cancel_event: threading.Event | None = None
@@ -185,7 +231,7 @@ class Api:
         try:
             dialog_type = getattr(getattr(webview, "FileDialog", None), "OPEN", webview.OPEN_DIALOG)
             result = self.window.create_file_dialog(
-                dialog_type, file_types=("Excel Files (*.xlsx)",),
+                dialog_type, file_types=("JSON Settings (*.json)",),
                 allow_multiple=False,
             )
         except Exception:  # noqa: BLE001
@@ -193,16 +239,6 @@ class Api:
             return None
         return result[0] if result else None
 
-    def get_auto_input_info(self) -> dict:
-        input_dir = db.app_data_dir() / "input"
-        return {
-            "ok": True,
-            "directory": str(input_dir),
-            "notes_file": str(input_dir / "notes.xlsx"),
-            "tasks_file": str(input_dir / "tasks.xlsx"),
-            "notes_exists": (input_dir / "notes.xlsx").exists(),
-            "tasks_exists": (input_dir / "tasks.xlsx").exists(),
-        }
 
     def get_crm_settings(self) -> dict:
         stored = db.get_setting("crm_settings", {}) or {}
@@ -211,7 +247,7 @@ class Api:
             "organization": stored.get("organization", DEFAULT_ORGANIZATION),
             "api_version": stored.get("api_version", DEFAULT_API_VERSION),
             "view_name": stored.get("view_name") or "",
-            "data_source": db.get_setting("data_source", "crm"),
+            "data_source": "crm",
             "last_snapshot": db.get_latest_crm_snapshot(),
         }
 
@@ -221,7 +257,7 @@ class Api:
             return {"ok": True, "loaded": False, "total_cases": 0, "total_notes": 0, "total_tasks": 0}
         return {
             "ok": True, "loaded": True,
-            "source": db.get_setting("data_source", "crm"),
+            "source": "crm",
             "total_cases": len(self.dataset.cases),
             "total_notes": len(self.dataset.notes),
             "total_tasks": len(self.dataset.tasks),
@@ -242,10 +278,6 @@ class Api:
             "saved_at": (record or {}).get("saved_at"),
         }
 
-    def set_data_source(self, source: str) -> dict:
-        value = "crm" if source == "crm" else "file"
-        db.set_setting("data_source", value)
-        return {"ok": True, "data_source": value}
 
     def save_crm_settings(self, payload: dict) -> dict:
         settings = {
@@ -282,6 +314,57 @@ class Api:
             return {"ok": True, "views": client.list_note_views()}
         except CRMClientError as exc:
             return {"ok": False, "views": [], "error": str(exc)}
+
+    def inspect_crm_case_audit(self, case_key: str, payload: dict | None = None) -> dict:
+        """Admin-only read-only capability diagnostic; not a fake history feed."""
+        if not self.dataset or case_key not in self.dataset.cases:
+            return {"ok": False, "error": "مورد باید در Snapshot محلی موجود باشد."}
+        case = self.dataset.cases[case_key]
+        case_id = next((note.case_id for note in case.notes if note.case_id), None)
+        if not case_id:
+            return {"ok": False, "error": "شناسه سازمانی CRM برای این مورد در Snapshot موجود نیست."}
+        try:
+            settings = self.get_crm_settings()
+            client = DynamicsCRMClient(**self._crm_client_settings(settings, payload or {}))
+            return {"ok": True, **client.read_case_audit(case_id)}
+        except CRMClientError as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def retrieve_crm_case_history(self, case_key: str, payload: dict | None = None) -> dict:
+        """Explicit, on-demand read: no repeated whole-population audit scans."""
+        if not self.dataset or case_key not in self.dataset.cases:
+            return {"ok": False, "error": "مورد در Snapshot محلی موجود نیست."}
+        case = self.dataset.cases[case_key]
+        case_id = next((note.case_id for note in case.notes if note.case_id), None)
+        if not case_id:
+            return {"ok": False, "error": "شناسه CRM این مورد موجود نیست."}
+        try:
+            settings = self.get_crm_settings()
+            client = DynamicsCRMClient(**self._crm_client_settings(settings, payload or {}))
+            evidence = client.read_case_history(case_id, db.get_setting("crm_status_mapping", {}))
+            if not evidence.get("history_complete"):
+                return {"ok": False, "error": evidence["reason"]}
+            with self._lock:
+                if not self.dataset or self.dataset.cases.get(case_key) is not case:
+                    return {"ok": False, "error": "Snapshot هنگام دریافت تغییر کرد؛ مورد را دوباره انتخاب کنید."}
+                for key in ("history_complete", "status_history", "responsibility_history_complete", "responsibility_history"):
+                    setattr(case, key, evidence[key])
+                snapshot = db.get_latest_crm_snapshot()
+                if snapshot:
+                    db.save_crm_snapshot("dynamics365", snapshot["view_name"], snapshot["fetched_at"],
+                                         snapshot.get("metadata", {}), dataset_to_payload(self.dataset))
+            return {"ok": True, "message": "تاریخچه معتبر ذخیره شد؛ برای محاسبه معیارهای زمانی ارزیابی را اجرا کنید."}
+        except (CRMClientError, ValueError) as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def save_crm_status_mapping(self, mapping: dict) -> dict:
+        kinds = {"open", "resolved", "closed", "waiting_customer", "waiting_team", "waiting_third_party"}
+        if not isinstance(mapping, dict) or any(not str(key).isdigit() or not isinstance(value, dict)
+                or value.get("kind") not in kinds or not str(value.get("name", "")).strip()
+                for key, value in mapping.items()):
+            return {"ok": False, "error": "نگاشت وضعیت معتبر نیست."}
+        db.set_setting("crm_status_mapping", mapping)
+        return {"ok": True}
 
     def sync_crm_view(self, payload: dict | None = None) -> dict:
         """Start CRM synchronization without blocking the WebView UI."""
@@ -475,6 +558,14 @@ class Api:
             current_payload = {
                 "notes": list(merged_notes.values()),
                 "tasks": list(merged_tasks.values()),
+                # Incoming evidence overrides only cases actually refreshed.
+                # Retained histories are marked incomplete until reconfirmed.
+                "case_evidence": {
+                    **{key: {**value, "history_complete": False,
+                             "responsibility_history_complete": False, "data_complete": False}
+                       for key, value in previous_payload.get("case_evidence", {}).items()},
+                    **fetched_payload.get("case_evidence", {}),
+                },
             }
             dataset = dataset_from_payload(current_payload)
         else:
@@ -576,21 +667,6 @@ class Api:
         return {"ok": True, "rows": rows[start:start + page_size], "total": total,
                 "page": page, "page_size": page_size}
 
-    def auto_upload_default_files(self) -> dict:
-        info = self.get_auto_input_info()
-        if not info["notes_exists"] or not info["tasks_exists"]:
-            return {
-                "ok": False,
-                "available": False,
-                "directory": info["directory"],
-                "notes_file": info["notes_file"],
-                "tasks_file": info["tasks_file"],
-                "error": "دو فایل notes.xlsx و tasks.xlsx در پوشه ورودی خودکار پیدا نشدند.",
-            }
-        result = self.upload(info["notes_file"], info["tasks_file"])
-        result["auto_loaded"] = result.get("ok", False)
-        result["directory"] = info["directory"]
-        return result
 
     def pick_save_path(self, suggested_name: str) -> str | None:
         if not self.window:
@@ -605,32 +681,6 @@ class Api:
             return None
         return result if isinstance(result, str) else (result[0] if result else None)
 
-    def upload(self, notes_path: str, tasks_path: str) -> dict:
-        try:
-            self.dataset = pipeline_mod.load_dataset(notes_path, tasks_path)
-        except ExcelLoadError as exc:
-            return {"ok": False, "error": str(exc)}
-        except Exception as exc:  # noqa: BLE001
-            traceback.print_exc()
-            return {"ok": False, "error": f"خطای غیرمنتظره در پردازش فایل: {exc}"}
-
-        with self._lock:
-            self._analysis_generation += 1
-            self.result = None
-            self.status = {"running": False, "done": False, "cancelled": False, "stage": "", "current": 0, "total": 0, "error": None}
-        db.set_setting("data_source", "file")
-        ns, ts = self.dataset.notes_summary, self.dataset.tasks_summary
-        dates = [n.note_date for n in self.dataset.notes if n.note_date] + \
-                [t.created_on for t in self.dataset.tasks if t.created_on]
-        bounds = {"min": _iso(min(dates)), "max": _iso(max(dates))} if dates else {"min": None, "max": None}
-        return {
-            "ok": True,
-            "notes_summary": _summary_to_dict(ns),
-            "tasks_summary": _summary_to_dict(ts),
-            "total_cases": len(self.dataset.cases),
-            "unmatched_tasks": len(self.dataset.unmatched_tasks),
-            "date_bounds": bounds,
-        }
 
     def clear_dataset(self) -> dict:
         with self._lock:
@@ -831,20 +881,29 @@ class Api:
     def get_criteria(self) -> dict:
         return self.config.to_dict()
 
+    def set_criterion_threshold(self, criterion_id: str, threshold=None) -> dict:
+        import math
+        criterion = self.config.find_criterion(criterion_id)
+        if not criterion:
+            return {"ok": False, "error": "معیار یافت نشد."}
+        try:
+            number = None if threshold is None or threshold == "" else float(threshold)
+        except (ValueError, TypeError):
+            return {"ok": False, "error": "حدنصاب باید عدد باشد."}
+        if number is not None and (not math.isfinite(number) or not 0 <= number <= 100):
+            return {"ok": False, "error": "حدنصاب کیفی باید بین صفر و صد باشد."}
+        criterion.pass_threshold = number
+        save_criteria_config(self.config, USER_CONFIG_PATH)
+        return {"ok": True}
+
     def update_criterion(self, criterion_id: str, weight: float, active: bool) -> dict:
+        if criterion_id in {"notes_clarity", "notes_writing_quality", "task_description_quality", "scenario_recorded"}:
+            return {"ok": False, "error": "این شاخص طول/کلیدواژه کنار گذاشته شده و معیار کیفیت محسوب نمی‌شود."}
         c = self.config.find_criterion(criterion_id)
         if not c:
             return {"ok": False, "error": "معیار پیدا نشد."}
         c.weight = float(weight)
         c.active = bool(active)
-        save_criteria_config(self.config, USER_CONFIG_PATH)
-        return {"ok": True}
-
-    def update_ratio(self, objective: float, ai: float) -> dict:
-        total = objective + ai
-        if total <= 0:
-            return {"ok": False, "error": "مجموع نسبت‌ها باید بزرگ‌تر از صفر باشد."}
-        self.config.objective_ai_ratio = {"objective": objective / total, "ai": ai / total}
         save_criteria_config(self.config, USER_CONFIG_PATH)
         return {"ok": True}
 
@@ -955,27 +1014,15 @@ class Api:
 
     # ------------------------------------------------------------ analysis --
 
-    def start_analysis(self, p1_start: str = "", p1_end: str = "", p2_start: str = "",
-                        p2_end: str = "", expert_group: str | None = None,
-                        mode: str = "comparison", force_ai: bool = False,
+    def start_analysis(self, expert_group: str | None = None, force_ai: bool = False,
                         selected_case_keys: list[str] | None = None) -> dict:
         if not self.dataset:
-            return {"ok": False, "error": "ابتدا فایل‌های Notes و Tasks را بارگذاری کنید."}
-        if mode not in {"comparison", "general"}:
-            return {"ok": False, "error": "حالت تحلیل نامعتبر است."}
+            return {"ok": False, "error": "ابتدا داده CRM را دریافت یا Snapshot محلی را بازیابی کنید."}
+        mode = "general"
         selected_keys = set(self.dataset.cases.keys()) if selected_case_keys is None else set(selected_case_keys)
         selected_keys &= set(self.dataset.cases.keys())
         if not selected_keys:
             return {"ok": False, "error": "حداقل یک مورد را برای تحلیل انتخاب کنید."}
-        period1 = period2 = None
-        if mode == "comparison":
-            try:
-                period1 = (_parse_period_bound(p1_start, end=False), _parse_period_bound(p1_end, end=True))
-                period2 = (_parse_period_bound(p2_start, end=False), _parse_period_bound(p2_end, end=True))
-            except ValueError:
-                return {"ok": False, "error": "فرمت تاریخ نامعتبر است."}
-            self.last_periods = (period1, period2)
-
         expert_filter = None
         unit = "case"
         if expert_group:
@@ -1002,7 +1049,7 @@ class Api:
                            "selected_case_count": len(selected_keys)}
         thread = threading.Thread(
             target=self._run_worker,
-            args=(dataset, config, ai_settings, period1, period2, expert_filter, unit, mode, generation, force_ai, cancel_event, selected_keys),
+            args=(dataset, config, ai_settings, expert_filter, unit, generation, force_ai, cancel_event, selected_keys),
             daemon=True,
         )
         thread.start()
@@ -1020,8 +1067,8 @@ class Api:
             })
         return {"ok": True, "cancelled": True}
 
-    def _run_worker(self, dataset, config, ai_settings, period1, period2,
-                    expert_filter=None, unit="case", mode="comparison", generation=0,
+    def _run_worker(self, dataset, config, ai_settings,
+                    expert_filter=None, unit="case", generation=0,
                     force_ai=False, cancel_event: threading.Event | None = None,
                     selected_case_keys: set[str] | None = None):
         def progress_cb(label, current, total):
@@ -1063,26 +1110,16 @@ class Api:
                     note for note in dataset.notes
                     if note.case_key in selected_case_keys
                 ]
-            result = (
-                run_general_analysis(
-                    analysis_dataset, config, settings, progress_cb, expert_filter, unit,
-                    force_ai, cancel_check, selected_case_keys, self.suspicious_rules, self.analysis_rules
-                )
-                if mode == "general" else
-                run_full_analysis(
-                    analysis_dataset, config, period1, period2, settings, progress_cb,
-                    expert_filter, unit, force_ai, cancel_check, selected_case_keys,
-                    self.suspicious_rules, self.analysis_rules
-                )
+            result = run_general_analysis(
+                analysis_dataset, config, settings, progress_cb, expert_filter, unit,
+                force_ai, cancel_check, selected_case_keys, self.suspicious_rules,
+                {**self.analysis_rules, "management_thresholds": db.get_setting("management_thresholds", {}),
+                 "management_severities": db.get_setting("management_severities", {})}
             )
             with self._lock:
                 if generation != self._analysis_generation or (cancel_event and cancel_event.is_set()):
                     return
-                analyzed_count = (
-                    len(result["general"].cases)
-                    if result.get("mode") == "general"
-                    else len(set(result["period1"].cases) | set(result["period2"].cases))
-                )
+                analyzed_count = len(result["general"].cases)
                 analysis_timestamp = datetime.now().isoformat()
                 result["_analyzed_at"] = analysis_timestamp
                 result["_case_analyzed_at"] = {
@@ -1124,58 +1161,22 @@ class Api:
         if not self.result or not self.dataset:
             return {"ok": False}
         r = self.result
-        if r.get("mode") == "general":
-            general = r["general"]
-            return {
-                "ok": True, "mode": "general", "unit": r.get("unit", "case"),
-                "total_cases": len(general.cases), "total_cases_all": len(self.dataset.cases),
-                "total_experts": len(r["experts_general"]),
-                "total_notes": sum(len(c.notes) for c in general.cases.values()),
-                "total_tasks": sum(len(c.tasks) for c in general.cases.values()),
-                "data_quality": r["data_health_index"],
-                "general_score": r["general_score"], "period1_score": None,
-                "period2_score": None, "improvement_pct": None,
-                "category_chart": [
-                    {"name": c["name_fa"], "value": c["value"]}
-                    for c in r["general_categories"]
-                ],
-                "suspicious_count": len(r["suspicious"]),
-            }
-        p1, p2 = r["period1"], r["period2"]
-        overall = r["comparison"]["overall"]
-        analyzed_cases = len(set(p1.cases) | set(p2.cases))
+        general = r["general"]
         return {
-            "ok": True,
-            "unit": r.get("unit", "case"),
-            "total_cases": analyzed_cases,
-            "total_cases_all": len(self.dataset.cases),
-            "total_experts": len({e for e in r["experts_p2"]} | {e for e in r["experts_p1"]}),
-            "total_notes": sum(len(c.notes) for c in p1.cases.values()) + sum(len(c.notes) for c in p2.cases.values()),
-            "total_tasks": sum(len(c.tasks) for c in p1.cases.values()) + sum(len(c.tasks) for c in p2.cases.values()),
+            "ok": True, "mode": "general", "unit": r.get("unit", "case"),
+            "total_cases": len(general.cases), "total_cases_all": len(self.dataset.cases),
+            "total_experts": len(r["experts_general"]),
+            "total_notes": sum(len(c.notes) for c in general.cases.values()),
+            "total_tasks": sum(len(c.tasks) for c in general.cases.values()),
             "data_quality": r["data_health_index"],
-            "period1_score": overall.period1,
-            "period2_score": overall.period2,
-            "improvement_pct": overall.change_pct,
+            "general_score": r["general_score"],
             "category_chart": [
-                {"name": c.name_fa, "period1": c.period1, "period2": c.period2}
-                for c in r["comparison"]["categories"]
+                {"name": c["name_fa"], "value": c["value"]}
+                for c in r["general_categories"]
             ],
             "suspicious_count": len(r["suspicious"]),
         }
 
-    def get_comparison(self) -> dict:
-        if not self.result:
-            return {"ok": False}
-        if self.result.get("mode") == "general":
-            return {"ok": False, "mode": "general", "error": "مقایسه دوره‌ها برای تحلیل کلی کاربرد ندارد."}
-        comp = self.result["comparison"]
-        return {
-            "ok": True,
-            "overall": asdict(comp["overall"]),
-            "categories": [asdict(c) for c in comp["categories"]],
-            "criteria": [asdict(c) for c in comp["criteria"]],
-            "narrative": comp["narrative"],
-        }
 
     def get_ranking(self) -> dict:
         if not self.result:
@@ -1186,84 +1187,39 @@ class Api:
         if not self.result:
             return {"ok": False}
         r = self.result
-        if r.get("mode") == "general":
-            s = r["experts_general"].get(expert)
-            if not s:
-                return {"ok": True, "general": None, "cases": [], "feedback": None}
-            from analysis.experts import build_employee_feedback, primary_expert
-            cases = []
-            for key, case in r["general"].cases.items():
-                if primary_expert(case) == expert:
-                    b = r["general"].scores.get(key)
-                    cases.append({
-                        "case_key": key, "case_number": case.case_number,
-                        "case_title": case.case_title,
-                        "final_score": b.final_score if b else None,
-                    })
-            cases.sort(key=lambda c: (c["final_score"] is None, c["final_score"] or 0))
-            return {
-                "ok": True, "general": {
-                    "case_count": s.case_count, "note_count": s.note_count,
-                    "task_count": s.task_count, "avg_objective": s.avg_objective,
-                    "avg_ai": s.avg_ai, "avg_final": s.avg_final,
-                    "weak_criteria": s.weak_criteria.most_common(5),
-                    "strong_criteria": s.strong_criteria.most_common(5),
-                },
-                "period1": None, "period2": None, "cases": cases[:200],
-                "feedback": build_employee_feedback(s),
-            }
-        s1 = r["experts_p1"].get(expert)
-        s2 = r["experts_p2"].get(expert)
-
-        def ser(s):
-            if not s:
-                return None
-            return {
-                "case_count": s.case_count, "note_count": s.note_count, "task_count": s.task_count,
-                "avg_objective": s.avg_objective, "avg_ai": s.avg_ai, "avg_final": s.avg_final,
-                "weak_criteria": s.weak_criteria.most_common(5), "strong_criteria": s.strong_criteria.most_common(5),
-            }
-
-        cases_p2 = []
-        for key, case in r["period2"].cases.items():
-            from analysis.experts import primary_expert
+        s = r["experts_general"].get(expert)
+        if not s:
+            return {"ok": True, "general": None, "cases": [], "feedback": None}
+        from analysis.experts import build_employee_feedback, primary_expert
+        cases = []
+        for key, case in r["general"].cases.items():
             if primary_expert(case) == expert:
-                b = r["period2"].scores.get(key)
-                cases_p2.append({
-                    "case_key": key, "case_number": case.case_number, "case_title": case.case_title,
+                b = r["general"].scores.get(key)
+                cases.append({
+                    "case_key": key, "case_number": case.case_number,
+                    "case_title": case.case_title,
                     "final_score": b.final_score if b else None,
                 })
-        cases_p2.sort(key=lambda c: (c["final_score"] is None, c["final_score"] or 0))
-
-        from analysis.experts import build_employee_feedback
-        feedback = build_employee_feedback(s2) if s2 else (build_employee_feedback(s1) if s1 else None)
-
+        cases.sort(key=lambda c: (c["final_score"] is None, c["final_score"] or 0))
         return {
-            "ok": True, "period1": ser(s1), "period2": ser(s2), "cases": cases_p2[:200],
-            "feedback": feedback,
+            "ok": True, "general": {
+                "case_count": s.case_count, "note_count": s.note_count,
+                "task_count": s.task_count, "avg_objective": s.avg_objective,
+                "avg_ai": s.avg_ai, "avg_final": s.avg_final,
+                "weak_criteria": s.weak_criteria.most_common(5),
+                "strong_criteria": s.strong_criteria.most_common(5),
+            },
+            "cases": cases[:200],
+            "feedback": build_employee_feedback(s),
         }
 
     def _build_full_expert_report(self, expert: str) -> dict:
         from analysis.experts import build_full_employee_report
         r = self.result
-        if r.get("mode") == "general":
-            stats = r["experts_general"].get(expert)
-            return build_full_employee_report(
-                expert, stats, None, r["experts_general"], "تحلیل کلی",
-                unit=r.get("unit", "case"),
-            )
-        s1 = r["experts_p1"].get(expert)
-        s2 = r["experts_p2"].get(expert)
-        s_current, s_previous = (s2, s1) if s2 else (s1, None)
-
-        period_label = "—"
-        if self.last_periods:
-            p1, p2 = self.last_periods
-            active = p2 if s2 else p1
-            period_label = f"{active[0].date().isoformat()} تا {active[1].date().isoformat()}"
-
+        stats = r["experts_general"].get(expert)
         return build_full_employee_report(
-            expert, s_current, s_previous, r["experts_p2"], period_label, unit=r.get("unit", "case"),
+            expert, stats, r["experts_general"], "تحلیل کلی",
+            unit=r.get("unit", "case"),
         )
 
     def get_expert_report(self, expert: str) -> dict:
@@ -1283,29 +1239,12 @@ class Api:
             traceback.print_exc()
             return {"ok": False, "error": f"خطا در ساخت گزارش: {exc}"}
 
-    def _resolve_period(self, period: str) -> tuple[dict, dict]:
-        """cases, scores را برای period داده‌شده برمی‌گرداند. period می‌تواند
-        'period1'، 'period2' یا 'all' (ترکیب هر دو دوره، دوره دوم در صورت
-        تداخل کلید ارجحیت دارد چون جدیدتر است) باشد."""
-        if period == "all":
-            if self.result.get("mode") == "general":
-                return self.result["general"].cases, self.result["general"].scores
-            cases = {**self.result["period1"].cases, **self.result["period2"].cases}
-            scores = {**self.result["period1"].scores, **self.result["period2"].scores}
-            return cases, scores
-        if self.result.get("mode") == "general":
-            return self.result["general"].cases, self.result["general"].scores
-        if period in ("period1", "period2") and period in self.result:
-            pr = self.result[period]
-        elif "general" in self.result:
-            pr = self.result["general"]
-        elif "period2" in self.result:
-            pr = self.result["period2"]
-        else:
-            pr = self.result["period1"]
-        return pr.cases, pr.scores
+    def _resolve_period(self, period: str = "general") -> tuple[dict, dict]:
+        if not self.result or "general" not in self.result:
+            return {}, {}
+        return self.result["general"].cases, self.result["general"].scores
 
-    def get_case_detail(self, case_key: str, period: str = "period2") -> dict:
+    def get_case_detail(self, case_key: str, period: str = "general") -> dict:
         if self.result:
             cases, scores = self._resolve_period(period)
         elif self.dataset:
@@ -1406,13 +1345,22 @@ class Api:
                     "سرویس AI پاسخ قابل استفاده‌ای برای معیارهای این کیس برنگرداند. "
                     "لطفاً اتصال، مدل و قالب پاسخ JSON را بررسی کنید."
                 )
-            breakdown = score_case(case, config, scores)
+            evaluation_at = datetime.now().astimezone().isoformat()
+            breakdown = score_case(case, config, scores, rule_settings={**self.analysis_rules, "evaluation_at": evaluation_at})
             with self._lock:
                 if self.result:
-                    for name in ("period1", "period2", "general"):
+                    for name in ("general",):
                         result = self.result.get(name)
                         if result and case_key in result.cases:
                             result.scores[case_key] = breakdown
+                    # Previous managerial evaluation has a different frozen
+                    # clock/config: never display it as the new AI result.
+                    self.result.pop("quantitative", None)
+                    self.result.pop("management_queue", None)
+                    self.result.setdefault("_case_analyzed_at", {})[case_key] = evaluation_at
+                    snapshot = db.get_latest_crm_snapshot()
+                    db.save_local_analysis(self.result, dataset_id=_dataset_id(snapshot),
+                                           view_name=(snapshot or {}).get("view_name"))
                 self._case_ai_status[case_key] = {"running": False, "done": True, "error": None}
         except Exception as exc:  # noqa: BLE001
             with self._lock:
@@ -1516,7 +1464,7 @@ class Api:
         case_analysis_times = self.result.get("_case_analyzed_at", {})
         source_result = self.result.get("general")
         source_cases = source_result.cases if source_result else (
-            self.dataset.cases if self.dataset else self.result["period2"].cases
+            self.dataset.cases if self.dataset else self.result["general"].cases
         )
         def source_case(case_key):
             return source_cases.get(case_key) or (
@@ -1562,17 +1510,11 @@ class Api:
         return {"ok": True, "rules": self.analysis_rules}
 
     def get_suspicious_rules(self) -> dict:
-        return {
-            "rules": [
-                {"id": rule_id, **info, **self.suspicious_rules.get(rule_id, {})}
-                for rule_id, info in SUSPICIOUS_RULE_INFO.items()
-            ]
-        }
+        return {"rules": [], "retired": True,
+                "message": "هشدارهای مستقل کنار گذاشته شده‌اند؛ صف بررسی از نتیجه معیارها و حدنصاب ادمین ساخته می‌شود."}
 
     def save_suspicious_rules(self, rules: dict) -> dict:
-        self.suspicious_rules = normalized_rule_settings(rules or {})
-        db.set_setting("suspicious_rules", self.suspicious_rules)
-        return {"ok": True, "rules": self.get_suspicious_rules()["rules"]}
+        return {"ok": False, "error": "قواعد هشدار قدیمی بازنشسته شده‌اند؛ حدنصاب معیارها را تنظیم کنید."}
 
     def get_data_quality(self) -> dict:
         if not self.result:
@@ -1588,37 +1530,19 @@ class Api:
         if not self.result:
             return {"ok": False}
         r = self.result
-        if r.get("mode") == "general":
-            categories = [c for c in r["general_categories"] if c["value"] is not None]
-            categories.sort(key=lambda c: c["value"])
-            return {
-                "ok": True,
-                "overall_status": r["general_narrative"],
-                "top_strengths": [c["name_fa"] for c in categories if c["value"] >= 75][:5],
-                "top_weaknesses": [
-                    {"name": c["name_fa"], "score": c["value"]}
-                    for c in categories if c["value"] < 75
-                ][:5],
-                "most_improved": [], "most_declined": [],
-                "data_issues": [h.name_fa for h in r["data_health_checks"] if h.healthy_score < 80],
-                "recommendations": [],
-            }
-        comp = r["comparison"]
-        ranking = r["ranking"]
-        improved = [row for row in ranking if row["change"] is not None and row["change"] > 0]
-        worsened = [row for row in ranking if row["change"] is not None and row["change"] < 0]
-        improved.sort(key=lambda x: -x["change"])
-        worsened.sort(key=lambda x: x["change"])
-        top_weak = _top_weak_criteria(comp["criteria"])
+        queue = r.get("management_queue", [])
+        violations = [row for row in queue if row["criterion"]["status"] == "needs_correction"]
+        missing = [row for row in queue if row["criterion"]["status"] == "insufficient_data"]
         return {
             "ok": True,
-            "overall_status": comp["narrative"],
-            "top_strengths": [c.name_fa for c in comp["categories"] if c.period2 and c.period2 >= 75][:5],
-            "top_weaknesses": top_weak,
-            "most_improved": improved[:5],
-            "most_declined": worsened[:5],
-            "data_issues": [h.name_fa for h in r["data_health_checks"] if h.healthy_score < 80],
-            "recommendations": _build_recommendations(comp, r["data_health_index"]),
+            "overall_status": f"محدوده موارد منتخب: {len(r['general'].cases)} مورد؛ {len(violations)} نقض حدنصاب و {len(missing)} معیار با کمبود داده. امتیاز ترکیبی یا رتبه فردی تولید نمی‌شود.",
+            "top_strengths": [],
+            "top_weaknesses": [
+                {"name": f"{row['case_number'] or row['case_key']} — {row['criterion']['name']}", "score": row["criterion"]["value"]}
+                for row in violations
+            ],
+            "data_issues": sorted({row["criterion"]["name"] for row in missing}),
+            "recommendations": [f"{row['case_number'] or row['case_key']}: {row['action']}" for row in violations],
         }
 
     # -------------------------------------------------------------- export --
@@ -1646,117 +1570,55 @@ class Api:
 
     def _build_export_tables(self) -> dict:
         r = self.result
-        if r.get("mode") == "general":
-            general = r["general"]
-            from analysis.experts import primary_expert
-            summary_rows = [
-                ["تعداد کل موارد", len(self.dataset.cases)],
-                ["تعداد Note", len(self.dataset.notes)],
-                ["تعداد Task", len(self.dataset.tasks)],
-                ["شاخص سلامت داده CRM", r["data_health_index"]],
-                ["امتیاز تحلیل کلی", r["general_score"]],
-            ]
-            case_rows = []
-            ai_rows = []
-            for key, case in general.cases.items():
-                b = general.scores.get(key)
-                case_rows.append([
-                    "تحلیل کلی", case.case_number, case.case_title, primary_expert(case),
-                    len(case.notes), len(case.tasks),
-                    b.objective_score if b else None, b.ai_score if b else None,
-                    b.final_score if b else None,
-                ])
-                if b and b.ai_used:
-                    for cs in b.criterion_scores:
-                        if cs.evaluation_type in ("AI", "HYBRID") and cs.score is not None:
-                            ai_rows.append(["تحلیل کلی", case.case_number, cs.name_fa, cs.score, cs.evidence])
-            expert_rows = [
-                [row["expert"], row["score"], row["cases"], row["status"]]
-                for row in r["ranking"]
-            ]
-            category_rows = [[c["name_fa"], c["value"]] for c in r["general_categories"]]
-            criteria_rows = [[c["name_fa"], c["value"]] for c in r["general_criteria"]]
-            dq_rows = [[h.name_fa, h.healthy_score, h.issue_count, h.detail_fa]
-                       for h in r["data_health_checks"]]
-            suspicious_rows = [
-                [s.case_number, s.case_title, " | ".join(s.reasons)]
-                for s in r["suspicious"]
-            ]
-            return {
-                "summary": {"headers": ["شاخص", "مقدار"], "rows": summary_rows},
-                "cases": {"headers": ["حالت", "شماره مورد", "عنوان", "کارشناس", "Note", "Task", "Objective", "AI", "Final"], "rows": case_rows},
-                "experts": {"headers": ["کارشناس", "امتیاز", "موارد", "وضعیت"], "rows": expert_rows},
-                "criteria": {"headers": ["معیار", "امتیاز"], "rows": criteria_rows},
-                "comparison": {"headers": ["دسته", "امتیاز"], "rows": category_rows},
-                "data_quality": {"headers": ["بررسی", "سلامت", "تعداد مشکل", "توضیح"], "rows": dq_rows},
-                "ai_evidence": {"headers": ["حالت", "شماره مورد", "معیار", "امتیاز", "شواهد"], "rows": ai_rows},
-                "suspicious": {"headers": ["شماره مورد", "عنوان", "دلایل"], "rows": suspicious_rows},
-            }
-        comp = r["comparison"]
-
+        general = r["general"]
+        from analysis.experts import primary_expert
         summary_rows = [
-            ["تعداد کل مورد", len(self.dataset.cases)],
-            ["تعداد Note", len(self.dataset.notes)],
-            ["تعداد Task", len(self.dataset.tasks)],
+            ["تعداد موارد منتخب", len(general.cases)],
+            ["تعداد یادداشت موارد منتخب", sum(len(case.notes) for case in general.cases.values())],
+            ["تعداد فعالیت موارد منتخب", sum(len(case.tasks) for case in general.cases.values())],
             ["شاخص سلامت داده CRM", r["data_health_index"]],
-            ["امتیاز کلی دوره اول", comp["overall"].period1],
-            ["امتیاز کلی دوره دوم", comp["overall"].period2],
-            ["تغییر", comp["overall"].change],
+            ["زمان ثابت ارزیابی", r.get("evaluation_at")],
+            ["نسخه معیارها", r.get("criteria_version")],
         ]
-
         case_rows = []
-        for period_key, pr in (("دوره اول", r["period1"]), ("دوره دوم", r["period2"])):
-            from analysis.experts import primary_expert
-            for key, case in pr.cases.items():
-                b = pr.scores.get(key)
-                case_rows.append([
-                    period_key, case.case_number, case.case_title, primary_expert(case),
-                    len(case.notes), len(case.tasks),
-                    b.objective_score if b else None, b.ai_score if b else None, b.final_score if b else None,
-                ])
-
-        expert_rows = [
-            [row["expert"], row["period1_score"], row["period2_score"], row["change"], row["status"],
-             row["period1_cases"], row["period2_cases"]]
-            for row in r["ranking"]
-        ]
-
-        criteria_rows = [
-            [c.name_fa, c.period1, c.period2, c.change, c.change_pct] for c in comp["criteria"]
-        ]
-
-        comparison_rows = [
-            [c.name_fa, c.period1, c.period2, c.change, c.change_pct] for c in comp["categories"]
-        ]
-
-        dq_rows = [
-            [h.name_fa, h.healthy_score, h.issue_count, h.detail_fa] for h in r["data_health_checks"]
-        ]
-
         ai_rows = []
-        for period_key, pr in (("دوره اول", r["period1"]), ("دوره دوم", r["period2"])):
-            for key, case in pr.cases.items():
-                b = pr.scores.get(key)
-                if not b or not b.ai_used:
-                    continue
+        for key, case in general.cases.items():
+            b = general.scores.get(key)
+            case_rows.append([
+                "تحلیل کلی", case.case_number, case.case_title, primary_expert(case),
+                len(case.notes), len(case.tasks),
+                b.objective_score if b else None, b.ai_score if b else None,
+            ])
+            if b and b.ai_used:
                 for cs in b.criterion_scores:
                     if cs.evaluation_type in ("AI", "HYBRID") and cs.score is not None:
-                        ai_rows.append([period_key, case.case_number, cs.name_fa, cs.score, cs.evidence])
-
-        suspicious_rows = [
-            [s.case_number, s.case_title, "؛ ".join(s.reasons)] for s in r["suspicious"]
+                        ai_rows.append(["تحلیل کلی", case.case_number, cs.name_fa, cs.score, cs.evidence])
+        expert_rows = [
+            [row["expert"], row["cases"], "مالک فعلی؛ بدون انتساب کیفیت تاریخی"]
+            for row in r["ranking"]
         ]
-
+        category_rows = [[c["name_fa"], c["value"]] for c in r["general_categories"]]
+        criteria_rows = [[c["name_fa"], c["value"]] for c in r["general_criteria"]]
+        dq_rows = [[h.name_fa, h.healthy_score, h.issue_count, h.detail_fa]
+                   for h in r["data_health_checks"]]
+        suspicious_rows = [
+            [s.case_number, s.case_title, " | ".join(s.reasons)]
+            for s in r["suspicious"]
+        ]
         return {
             "summary": {"headers": ["شاخص", "مقدار"], "rows": summary_rows},
-            "cases": {"headers": ["دوره", "شماره مورد", "عنوان", "کارشناس", "تعداد Note", "تعداد Task",
-                                   "Objective", "AI", "Final"], "rows": case_rows},
-            "experts": {"headers": ["کارشناس", "دوره اول", "دوره دوم", "تغییر", "وضعیت",
-                                     "تعداد مورد دوره اول", "تعداد مورد دوره دوم"], "rows": expert_rows},
-            "criteria": {"headers": ["معیار", "دوره اول", "دوره دوم", "تغییر", "درصد تغییر"], "rows": criteria_rows},
-            "comparison": {"headers": ["دسته", "دوره اول", "دوره دوم", "تغییر", "درصد تغییر"], "rows": comparison_rows},
-            "data_quality": {"headers": ["شاخص", "امتیاز سلامت", "تعداد مشکل", "توضیح"], "rows": dq_rows},
-            "ai_analysis": {"headers": ["دوره", "شماره مورد", "معیار", "امتیاز", "شواهد"], "rows": ai_rows},
+            "cases": {"headers": ["حالت", "شماره مورد", "عنوان", "مالک فعلی", "یادداشت", "فعالیت", "معیارهای Rule", "معیارهای AI"], "rows": case_rows},
+            "experts": {"headers": ["مالک فعلی", "موارد", "محدودیت انتساب"], "rows": expert_rows},
+            "criteria": {"headers": ["معیار", "امتیاز"], "rows": criteria_rows},
+            "categories": {"headers": ["دسته", "امتیاز"], "rows": category_rows},
+            "data_quality": {"headers": ["بررسی", "سلامت", "تعداد مشکل", "توضیح"], "rows": dq_rows},
+            "ai_analysis": {"headers": ["حالت", "شماره مورد", "معیار", "امتیاز", "شواهد"], "rows": ai_rows},
+            "management": {"headers": ["مورد", "معیار", "مقدار", "حدنصاب", "نتیجه", "شدت", "شواهد", "اقدام"],
+                           "rows": [[row["case_number"] or row["case_key"], row["criterion"]["name"],
+                                     json.dumps(row["criterion"]["value"], ensure_ascii=False), row["criterion"]["threshold"],
+                                     row["criterion"]["status"], row["criterion"]["severity"],
+                                     json.dumps(row["criterion"]["evidence"], ensure_ascii=False, default=str), row["action"]]
+                                    for row in r.get("management_queue", [])]},
             "suspicious": {"headers": ["شماره مورد", "عنوان", "دلایل"], "rows": suspicious_rows},
         }
 
@@ -1778,33 +1640,14 @@ def _breakdown_to_dict(b) -> dict:
         "ai_used": b.ai_used, "category_scores": b.category_scores,
         "coverage": b.coverage, "confidence": b.confidence,
         "na_criteria": b.na_criteria, "criteria_version": b.criteria_version,
+        "evaluation_at": getattr(b, "evaluation_at", None),
         "outcome_status": b.outcome_status, "lifecycle_status": b.lifecycle_status,
         "criteria": [
             {"id": c.criterion_id, "name_fa": c.name_fa, "category": c.category_name_fa,
              "type": c.evaluation_type, "score": c.score, "evidence": c.evidence,
              "coverage": c.coverage, "confidence": c.confidence,
              "na_reason": c.na_reason, "source_events": c.source_events,
-             "criteria_version": c.criteria_version}
+             "criteria_version": c.criteria_version, "status": getattr(c, "status", "insufficient_data")}
             for c in b.criterion_scores
         ],
     }
-
-
-def _top_weak_criteria(criteria_comparisons, n=5):
-    ranked = sorted(
-        [c for c in criteria_comparisons if c.period2 is not None],
-        key=lambda c: c.period2,
-    )
-    return [{"name": c.name_fa, "score": c.period2} for c in ranked[:n]]
-
-
-def _build_recommendations(comp, data_health_index) -> list[str]:
-    recs = []
-    weak = _top_weak_criteria(comp["criteria"], n=3)
-    for w in weak:
-        recs.append(f"بهبود «{w['name']}» (امتیاز فعلی {w['score']}) از طریق آموزش یا Checklist ثبت.")
-    if data_health_index < 80:
-        recs.append("شاخص سلامت داده CRM پایین است؛ بازبینی الزام ثبت Description و اتصال صحیح Task به مورد توصیه می‌شود.")
-    if not recs:
-        recs.append("در حال حاضر ضعف قابل‌توجهی شناسایی نشد؛ روند فعلی حفظ شود.")
-    return recs

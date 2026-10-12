@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import inspect
+from datetime import datetime, timezone
 from typing import Any
 
 from analysis.rules import RULE_FUNCTIONS
@@ -23,7 +24,8 @@ class CriterionScore:
     confidence: str = "low"
     na_reason: str | None = None
     source_events: list[dict[str, Any]] = field(default_factory=list)
-    criteria_version: str = "2.0"
+    criteria_version: str = "3.0"
+    status: str = "insufficient_data"
 
 
 @dataclass
@@ -38,9 +40,10 @@ class CaseScoreBreakdown:
     coverage: float = 0.0
     confidence: str = "low"
     na_criteria: int = 0
-    criteria_version: str = "2.0"
+    criteria_version: str = "3.0"
     outcome_status: str | None = None
     lifecycle_status: str | None = None
+    evaluation_at: str | None = None
 
 
 def _call_rule(fn, case, rule_settings):
@@ -85,6 +88,8 @@ def score_case(
 ) -> CaseScoreBreakdown:
     """Score with N/A-aware re-weighting while preserving the legacy API."""
     ai_scores = ai_scores or {}
+    rule_settings = {**(rule_settings or {})}
+    rule_settings.setdefault("evaluation_at", datetime.now(timezone.utc).isoformat())
     ai_used = bool(ai_scores)
     criterion_scores: list[CriterionScore] = []
     category_pairs: dict[str, list[tuple[float, float]]] = {}
@@ -108,6 +113,7 @@ def score_case(
                 coverage=0.0,
                 confidence="low",
                 na_reason=f"برای پروفایل «{profile.name_fa}» این معیار مرتبط نیست.",
+                status="not_applicable",
             ))
             continue
         applicable_weight += criterion.weight
@@ -148,7 +154,7 @@ def score_case(
 
         if score is not None:
             coverage = 1.0
-            confidence = "medium" if criterion.evaluation_type != "RULE" else "high"
+            confidence = getattr(ai_scores.get(criterion.id), "confidence", "low")
             category_pairs.setdefault(category.id, []).append((score, criterion.weight))
             if criterion.evaluation_type == "AI":
                 ai_pairs.append((score, criterion.weight))
@@ -169,6 +175,9 @@ def score_case(
             coverage=coverage,
             confidence=confidence,
             na_reason=na_reason,
+            source_events=getattr(ai_scores.get(criterion.id), "source_events", []),
+            status=("insufficient_data" if score is None else "measured" if criterion.pass_threshold is None
+                    else "pass" if score >= criterion.pass_threshold else "needs_correction"),
         ))
 
     category_scores = {
@@ -178,15 +187,6 @@ def score_case(
     objective_score = _round(_weighted_avg(objective_pairs))
     ai_score = _round(_weighted_avg(ai_pairs)) if ai_pairs else None
 
-    objective_ratio = config.objective_ai_ratio.get("objective", 0.6)
-    ai_ratio = config.objective_ai_ratio.get("ai", 0.4)
-    if objective_score is not None and ai_score is not None:
-        final_score = objective_score * objective_ratio + ai_score * ai_ratio
-    elif objective_score is not None:
-        final_score = objective_score
-    else:
-        final_score = ai_score
-
     active_weight = applicable_weight or sum(c.weight for _, c in config.active_criteria(unit=unit))
     eligible_weight = sum(c.weight for c in criterion_scores if c.score is not None)
     coverage = eligible_weight / active_weight if active_weight else 0.0
@@ -195,15 +195,16 @@ def score_case(
         case_key=case.case_key,
         objective_score=objective_score,
         ai_score=ai_score,
-        final_score=_round(final_score),
+        final_score=None,  # Quantitative compliance and qualitative evidence are separate results.
         ai_used=ai_used,
         category_scores=category_scores,
         criterion_scores=criterion_scores,
         coverage=round(coverage, 3),
-        confidence=_confidence(coverage),
+        confidence="low",
         na_criteria=sum(1 for item in criterion_scores if item.score is None),
         outcome_status=_derive_outcome_status(case),
         lifecycle_status=case.status,
+        evaluation_at=rule_settings["evaluation_at"],
     )
 
 

@@ -26,7 +26,7 @@
 | متد | ورودی اصلی | خروجی |
 |---|---|---|
 | `pick_file()` | — | مسیر انتخاب‌شده یا `null` |
-| `upload(notes_path, tasks_path)` | دو مسیر Excel | خلاصه بارگذاری و سلامت داده |
+| `sync_crm_view(payload)` | تنظیمات اتصال و View | شروع Worker دریافت CRM |
 | `clear_dataset()` | — | وضعیت پاک‌شدن Dataset |
 | `get_data_quality()` | — | Checkها و شاخص سلامت |
 
@@ -36,7 +36,7 @@
 |---|---|
 | `get_criteria()` | معیارها، دسته‌ها، Profileها و راهنماها |
 | `update_criterion(id, weight, active)` | تغییر فعال‌بودن/وزن معیار |
-| `update_ratio(objective, ai)` | نسبت Objective/AI |
+| `set_criterion_threshold(id, value)` | حداقل امتیاز کیفی، null برای بدون حدنصاب |
 | `update_evaluation_profile(...)` | اتصال Service به معیارها |
 | `reset_criteria()` | بازگردانی تنظیمات معیار |
 | `get_ai_settings()` | تنظیمات AI بدون API key |
@@ -45,11 +45,10 @@
 
 ## تحلیل
 
-`start_analysis(p1_start, p1_end, p2_start, p2_end, expert_group, mode,
-force_ai)` یک اجرای مستقل شروع می‌کند.
+`start_analysis(expert_group=None, force_ai=False, selected_case_keys=None)` یک اجرای مستقل شروع می‌کند.
 
-- `mode="comparison"`: هر دو دوره لازم است.
-- `mode="general"`: کل Dataset فعلی؛ دوره‌ها نادیده گرفته می‌شوند.
+- ورودی فقط Snapshot CRM است؛ موارد انتخاب‌شده یک جمعیت مستقل‌اند.
+- ورود Excel و مقایسه دو دوره حذف شده‌اند.
 - `force_ai=true`: Cache معتبر قبلی هم استفاده نمی‌شود.
 - هر اجرای جدید باید `generation` جدید داشته باشد و نتیجه قبلی را جایگزین کند.
 
@@ -57,8 +56,14 @@ force_ai)` یک اجرای مستقل شروع می‌کند.
 |---|---|
 | `get_status()` | وضعیت Worker و درصد پیشرفت |
 | `get_dashboard()` | KPI و خلاصه Mode جاری |
-| `get_comparison()` | مقایسه دو دوره |
-| `get_ranking()` | رتبه‌بندی کارشناسان |
+| `get_ranking()` | شمارش بار کار مرتبط با مالک فعلی؛ بدون رتبه‌بندی عملکرد |
+| `get_management_evaluation()` | معیارهای مستقل، شناسنامه، صف و آمار منتخب |
+| `save_management_thresholds(values)` | حد بالای معیار کمی؛ فقط ادمین |
+| `record_management_action(...)` | تصمیم، مسئول و موعد محلی برای معیار موجود در صف |
+| `inspect_crm_case_audit(case_key, payload)` | تشخیص دسترسی خواندنی Audit؛ فقط ادمین |
+| `retrieve_crm_case_history(case_key, payload)` | دریافت موردی تاریخچه معتبر و حفظ در Snapshot؛ ادمین |
+| `save_crm_status_mapping(mapping)` | نگاشت statuscode به name/kind؛ ادمین |
+| `save_management_severities(values)` | شدت info/warning/critical برای معیار؛ ادمین |
 | `get_cases_table(...)` | جدول صفحه‌بندی‌شده موارد |
 | `get_suspicious(...)` | موارد نیازمند بررسی با Filter |
 | `get_case_detail(case_key, period)` | Timeline و Breakdown یک مورد |
@@ -87,7 +92,7 @@ Status:
 {
   "objective_score": 0,
   "ai_score": 0,
-  "final_score": 0,
+  "final_score": null,
   "ai_used": true,
   "coverage": 0.0,
   "confidence": "low|medium|high",

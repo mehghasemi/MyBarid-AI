@@ -38,6 +38,8 @@ def export_excel(path: str, data: dict) -> None:
         "data_quality": "Data Quality",
         "ai_analysis": "AI Analysis",
         "suspicious": "Suspicious Cases",
+        "management": "Management Queue",
+        "categories": "Category Measurements",
     }
     for key, title in sheet_titles.items():
         section = data.get(key)

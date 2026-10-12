@@ -42,14 +42,23 @@ def _iso(value):
 
 def dataset_to_payload(dataset: Dataset) -> dict:
     return {
+        "case_evidence": {
+            key: {"history_complete": getattr(case, "history_complete", False),
+                  "status_history": [{**event, "entered_at": _iso(event.get("entered_at")) if isinstance(event.get("entered_at"), datetime) else event.get("entered_at")} for event in getattr(case, "status_history", [])],
+                  "data_complete": getattr(case, "data_complete", False),
+                  "responsibility_history_complete": getattr(case, "responsibility_history_complete", False),
+                  "responsibility_history": [{**event, "entered_at": _iso(event.get("entered_at")) if isinstance(event.get("entered_at"), datetime) else event.get("entered_at")} for event in getattr(case, "responsibility_history", [])]}
+            for key, case in dataset.cases.items()
+        },
         "notes": [
             {**n.__dict__, "case_created_on": _iso(n.case_created_on),
-             "note_date": _iso(n.note_date)}
+             "note_date": _iso(n.note_date), "created_on": _iso(getattr(n, "created_on", None)),
+             "modified_on": _iso(getattr(n, "modified_on", None))}
             for n in dataset.notes
         ],
         "tasks": [
             {**t.__dict__, "created_on": _iso(t.created_on),
-             "actual_start": _iso(t.actual_start), "due_date": _iso(t.due_date),
+             "actual_start": _iso(t.actual_start), "actual_end": _iso(getattr(t, "actual_end", None)), "due_date": _iso(t.due_date),
              "next_follow_up": _iso(t.next_follow_up)}
             for t in dataset.tasks
         ],
@@ -60,7 +69,9 @@ def dataset_from_payload(payload: dict) -> Dataset:
     notes = [
         NoteRecord(
             **{**row, "case_created_on": parse_datetime(row.get("case_created_on")),
-               "note_date": parse_datetime(row.get("note_date"))}
+               "note_date": parse_datetime(row.get("note_date")),
+               "created_on": parse_datetime(row.get("created_on")),
+               "modified_on": parse_datetime(row.get("modified_on"))}
         )
         for row in payload.get("notes", [])
     ]
@@ -68,12 +79,20 @@ def dataset_from_payload(payload: dict) -> Dataset:
         TaskRecord(
             **{**row, "created_on": parse_datetime(row.get("created_on")),
                "actual_start": parse_datetime(row.get("actual_start")),
+               "actual_end": parse_datetime(row.get("actual_end")),
                "due_date": parse_datetime(row.get("due_date")),
                "next_follow_up": parse_datetime(row.get("next_follow_up"))}
         )
         for row in payload.get("tasks", [])
     ]
     cases, unmatched = build_cases(notes, tasks)
+    for key, evidence in (payload.get("case_evidence") or {}).items():
+        if key not in cases or not isinstance(evidence, dict):
+            continue
+        for flag in ("history_complete", "data_complete", "responsibility_history_complete"):
+            setattr(cases[key], flag, evidence.get(flag) is True)
+        for history in ("status_history", "responsibility_history"):
+            setattr(cases[key], history, evidence.get(history, []) if isinstance(evidence.get(history, []), list) else [])
     summary = ValidationSummary(
         file_name="CRM Snapshot", sheet_name="CRM", total_rows=len(notes),
         usable_rows=len(notes), rows_without_date=sum(1 for n in notes if not n.note_date),
@@ -345,10 +364,10 @@ def _build_related_activity_fetchxml(
     new_root.set("distinct", "true")
     activity = ElementTree.SubElement(new_root, "entity", {"name": activity_entity})
     if activity_entity == "annotation":
-        attributes = ("annotationid", "notetext", "createdon", "modifiedon", "modifiedby", "objectid")
+        attributes = ("annotationid", "notetext", "createdon", "createdby", "modifiedon", "modifiedby", "objectid")
         to_attribute = "objectid"
     else:
-        attributes = ("activityid", "subject", "description", "createdon", "modifiedon", "actualstart", "scheduledend", "statuscode", "ownerid", "regardingobjectid")
+        attributes = ("activityid", "subject", "description", "createdon", "createdby", "modifiedon", "actualstart", "actualend", "scheduledend", "statecode", "statuscode", "ownerid", "regardingobjectid")
         to_attribute = "regardingobjectid"
     for name in attributes:
         ElementTree.SubElement(activity, "attribute", {"name": name})
@@ -377,10 +396,10 @@ def _build_activity_case_ids_fetchxml(
     request per Case, which made full syncs unnecessarily slow.
     """
     if activity_entity == "annotation":
-        attributes = ("annotationid", "notetext", "createdon", "modifiedon", "modifiedby", "objectid")
+        attributes = ("annotationid", "notetext", "createdon", "createdby", "modifiedon", "modifiedby", "objectid")
         regarding_attribute = "objectid"
     elif activity_entity == "task":
-        attributes = ("activityid", "subject", "description", "createdon", "modifiedon", "actualstart", "scheduledend", "statuscode", "ownerid", "regardingobjectid")
+        attributes = ("activityid", "subject", "description", "createdon", "createdby", "modifiedon", "actualstart", "actualend", "scheduledend", "statecode", "statuscode", "ownerid", "regardingobjectid")
         regarding_attribute = "regardingobjectid"
     else:
         raise CRMClientError(f"موجودیت فعالیت پشتیبانی نمی‌شود: {activity_entity}")
@@ -481,6 +500,53 @@ class DynamicsCRMClient:
         payload = _powershell_get_json(f"{self.api_root}/WhoAmI",
                                        self.username, self.password)
         return {"ok": True, "api_root": self.api_root, "user": payload}
+
+    def read_case_audit(self, case_id: str, max_pages: int = 100) -> dict:
+        """Read official audit history; never infer full status coverage from it.
+
+        Availability is deployment/privilege dependent. AuditRecord timestamps
+        may be absent in Web API, so raw details cannot automatically establish
+        complete status or responsibility intervals.
+        """
+        from uuid import UUID
+        try:
+            identifier = str(UUID(str(case_id)))
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise CRMClientError("شناسه معتبر CRM برای مورد لازم است.") from exc
+        target = quote(json.dumps({"@odata.id": f"incidents({identifier})"}), safe="")
+        details = []
+        cookie = None
+        seen = set()
+        for page in range(1, max_pages + 1):
+            paging = {"PageNumber": page, "Count": 100, "ReturnTotalRecordCount": True}
+            if cookie:
+                paging["PagingCookie"] = cookie
+            url = (f"{self.api_root}/RetrieveRecordChangeHistory(Target=@target,PagingInfo=@paginginfo)"
+                   f"?@target={target}&@paginginfo={quote(json.dumps(paging), safe='')}")
+            payload = _powershell_get_json(url, self.username, self.password)
+            collection = payload.get("AuditDetailCollection")
+            if not isinstance(collection, dict) or not isinstance(collection.get("AuditDetails"), list):
+                raise CRMClientError("پاسخ تاریخچه Audit ساختار معتبر ندارد؛ دسترسی و قابلیت سرور را بررسی کنید.")
+            details.extend(collection["AuditDetails"])
+            if collection.get("MoreRecords") is False:
+                return {"case_id": identifier, "details": details, "pages": page,
+                        "history_complete": False, "responsibility_history_complete": False,
+                        "reason": "Audit دریافت شد؛ کامل‌بودن از زمان ایجاد و نگاشت وضعیت‌ها هنوز باید اعتبارسنجی شود."}
+            cookie = collection.get("PagingCookie")
+            if not cookie or cookie in seen:
+                raise CRMClientError("صفحه‌بندی Audit متوقف شد؛ تاریخچه کامل دریافت نشده است.")
+            seen.add(cookie)
+        raise CRMClientError("تعداد صفحات Audit از حد ایمنی عبور کرد؛ نتیجه ناقص استفاده نمی‌شود.")
+
+    def read_case_history(self, case_id: str, status_mapping=None) -> dict:
+        from crm_history import reconstruct_history
+        from uuid import UUID
+        identifier = str(UUID(str(case_id)))
+        audit = self.read_case_audit(identifier)
+        record = _powershell_get_json(
+            f"{self.api_root}/incidents({identifier})?$select=createdon,statecode,statuscode,_ownerid_value",
+            self.username, self.password)
+        return reconstruct_history(record, audit["details"], status_mapping)
 
     def fetch_view_dataset(
         self,
@@ -613,8 +679,11 @@ class DynamicsCRMClient:
                 case_status_reason=_display(row, "ac.statuscode"),
                 case_created_on=parse_datetime(_value(row, "ac.createdon")),
                 case_created_by=_display(row, "ac.createdby"),
-                note_date=parse_datetime(_value(row, "modifiedon", "createdon")),
-                note_author=_display(row, "modifiedby", "createdby"),
+                note_date=parse_datetime(_value(row, "createdon")),
+                note_author=_display(row, "createdby"),
+                created_on=parse_datetime(_value(row, "createdon")),
+                modified_on=parse_datetime(_value(row, "modifiedon")),
+                modified_by=_display(row, "modifiedby"),
                 assign_to=_display(row, "ac.brd_assignto"),
                 incident_type=_display(row, "ac.brd_incidenttype"),
                 case_description=_value(row, "ac.description"),
@@ -630,9 +699,12 @@ class DynamicsCRMClient:
                 description=_value(row, "description"),
                 case_number=_value(row, "ac.ticketnumber", "ticketnumber"),
                 regarding=_value(row, "ac.title", "title", "_regardingobjectid_value"),
-                created_by=_display(row, "ownerid", "createdby"),
+                created_by=_display(row, "createdby", "_createdby_value"),
+                owner=_display(row, "ownerid", "_ownerid_value"),
                 created_on=parse_datetime(_value(row, "createdon")),
                 actual_start=parse_datetime(_value(row, "actualstart")),
+                actual_end=parse_datetime(_value(row, "actualend")),
+                state_code=str(_value(row, "statecode")) if _value(row, "statecode") is not None else None,
                 due_date=parse_datetime(_value(row, "scheduledend")),
                 status_reason=_display(row, "statuscode"),
                 follow_up_needed=None,
