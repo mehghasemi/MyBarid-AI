@@ -42,6 +42,9 @@ ROLE_PERMISSIONS["analyst"].update({"get_planning_settings", "get_planning_sync_
 ROLE_PERMISSIONS["viewer"].update({"get_planning_settings", "get_planning_sync_status"})
 for role in ("analyst", "viewer"):
     ROLE_PERMISSIONS[role].update({"get_main_settings", "get_evaluation_module_settings"})
+    ROLE_PERMISSIONS[role].add("get_module_cached_data")
+    ROLE_PERMISSIONS[role].update({"get_planning_workflow", "get_planning_program_detail"})
+ROLE_PERMISSIONS['analyst'].update({'save_planning_program', 'save_planning_followup', 'save_planning_case_result'})
 
 
 def _hash_password(password: str, salt: bytes | None = None) -> str:
@@ -120,6 +123,9 @@ class WebApplication:
         target = getattr(self.api, method, None)
         if not callable(target):
             raise AttributeError("عملیات در Backend پیدا نشد.")
+        if method in {'save_planning_program', 'save_planning_followup', 'save_planning_case_result'}:
+            # Actor is assigned by authenticated server, never by browser payload.
+            return target(*args, _actor=user)
         if method in {"start_analysis", "sync_crm_view"}:
             if not self.operation_lock.acquire(False):
                 raise RuntimeError("عملیات دیگری در حال اجراست؛ لطفاً تا پایان آن صبر کنید.")

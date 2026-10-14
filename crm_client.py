@@ -578,6 +578,7 @@ class DynamicsCRMClient:
         activity_since: datetime | None = None,
         include_related_activities: bool = False,
         progress_callback=None,
+        planning_previous: dict | None = None,
     ) -> tuple[Dataset, dict]:
         def progress(stage, completed=0, total=0, detail=""):
             if progress_callback:
@@ -590,6 +591,10 @@ class DynamicsCRMClient:
         fetchxml = view.get("fetchxml")
         if not fetchxml:
             raise CRMClientError("View فاقد FetchXML قابل اجرا است.")
+        planning_relation = None
+        if planning_previous is not None:
+            from planning_crm import prepare_view
+            fetchxml, planning_relation = prepare_view(self, fetchxml)
         returned_type = str(view.get("returnedtypecode") or "").casefold()
         entity_set = {"annotation": "annotations", "incident": "incidents"}.get(returned_type)
         if not entity_set:
@@ -618,6 +623,7 @@ class DynamicsCRMClient:
             next_link = page_payload.get("@odata.nextLink") or page_payload.get("odata.nextLink")
             page_count += 1
         progress("دریافت View انجام شد", page_count, page_count, f"{len(rows):,} رکورد")
+        view_rows = list(rows)
         if next_link:
             raise CRMClientError("حد ایمنی دریافت View پر شد؛ دریافت ناقص ذخیره نمی‌شود.")
 
@@ -782,7 +788,12 @@ class DynamicsCRMClient:
         def watermark(values, fallback):
             valid_values = [value for value in values if value is not None]
             return _iso(max(valid_values)) if valid_values else _iso(fallback)
+        planning_context = None
+        if planning_previous is not None:
+            from planning_crm import build_context
+            planning_context = build_context(self, view_rows, notes, tasks, planning_relation, planning_previous, since, progress)
         return dataset, {
+            **({"planning_context": planning_context} if planning_context is not None else {}),
             "view_name": self.view_name, "view_id": view.get("view_id"),
             "fetched_at": now, "row_count": len(rows), "api_root": self.api_root,
             "sync_mode": "incremental" if since else "full",

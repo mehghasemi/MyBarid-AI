@@ -10,6 +10,9 @@ settingsHost.insertAdjacentHTML('beforeend', `
  <div class="field"><label for="main-crm-api">نسخه API</label><input id="main-crm-api" dir="ltr"></div></div>
  <button class="btn primary" onclick="saveMainSettings()">ذخیره تنظیمات اصلی</button>
  <p>ورود CRM در فرم دریافت هر ماژول انجام می‌شود؛ این صفحه رمز عبور ذخیره نمی‌کند.</p></div>
+ <div class="card"><h3>ماژول پیش‌فرض هنگام ورود</h3><label for="main-default-module">برنامه با کدام ماژول باز شود؟</label>
+ <select id="main-default-module"><option value="crm-quality">ارزیابی موارد</option><option value="case-planning">برنامه‌ریزی موارد</option></select>
+ <p>با دکمه «ذخیره تنظیمات اصلی» ذخیره کنید. از ورود بعدی اعمال می‌شود؛ دریافت CRM خودکار شروع نمی‌شود.</p></div>
  <div class="card"><h3>هوش مصنوعی مشترک</h3><p>سرویس، مدل و کلید مشترک هستند. فعال‌بودن AI در ارزیابی جداگانه قابل تنظیم است.</p>
  <button class="btn" onclick="showPage('ai-settings')">تنظیمات مدل و کلید AI</button></div>
  <div class="card"><h3>محل نگهداری تنظیمات و داده‌ها</h3><p id="main-storage" dir="ltr"></p><p>تنظیمات ذخیره‌شده با بستن برنامه باقی می‌مانند.</p></div>
@@ -25,9 +28,12 @@ settingsHost.insertAdjacentHTML('beforeend', `
 </section>`);
 const evaluationMenu = document.querySelector('[data-module-menu="crm-quality"]');
 evaluationMenu.insertAdjacentHTML('afterbegin', '<div class="nav-item" data-page="evaluation-settings">⚙️ تنظیمات ماژول ارزیابی</div>');
-evaluationMenu.insertAdjacentHTML('beforebegin', '<div class="nav-item" data-page="main-settings">⚙️ تنظیمات اصلی برنامه</div>');
+const sharedSettingsNav = document.createElement('div');
+sharedSettingsNav.className = 'sidebar-shared-settings';
+sharedSettingsNav.insertAdjacentHTML('beforeend', '<div class="nav-item" data-page="main-settings">⚙️ تنظیمات اصلی برنامه</div>');
+document.getElementById('dataset-status').before(sharedSettingsNav);
 const sharedAiNav = document.querySelector('.nav-item[data-page="ai-settings"]');
-evaluationMenu.before(sharedAiNav);
+sharedSettingsNav.appendChild(sharedAiNav);
 for (const id of ['crm-base-url', 'crm-organization', 'planning-url', 'planning-org', 'planning-api']) {
  const input = document.getElementById(id);
  if (input) { input.readOnly = true; input.title = 'از تنظیمات اصلی برنامه تغییر دهید'; }
@@ -40,17 +46,18 @@ async function loadMainSettings() {
   document.getElementById('main-crm-org').value = result.crm.organization;
   document.getElementById('main-crm-api').value = result.crm.api_version;
   document.getElementById('main-storage').textContent = result.storage_path;
+  document.getElementById('main-default-module').value = result.default_module || 'crm-quality';
  } catch (error) { toast(error.message, 'error'); }
 }
 async function saveMainSettings() {
  try {
-  const result = await api().save_main_settings({crm: {
+  const result = await api().save_main_settings({default_module: document.getElementById('main-default-module').value, crm: {
    base_url: document.getElementById('main-crm-url').value,
    organization: document.getElementById('main-crm-org').value,
    api_version: document.getElementById('main-crm-api').value}});
   if (!result.ok) throw new Error(result.error);
   toast(result.message, 'success');
-  await loadCrmSettings(); await loadPlanningSettings();
+  await loadCrmSettings(false); await loadPlanningSettings();
  } catch (error) { toast(error.message, 'error'); }
 }
 async function loadEvaluationSettings() {

@@ -52,7 +52,7 @@ def test_incremental_worker_does_not_touch_evaluation_and_failed_fetch_does_not_
     settings = api.get_planning_settings()
     source = source_key(settings)
     db.save_crm_snapshot(source, "planning", "2026-01-02T00:00:00", {"cursor": "2026-01-02T00:00:00"},
-                         {"notes": [{"note_id": "1", "description": "previous"}], "tasks": []})
+                         {"notes": [{"note_id": "1", "description": "previous"}], "tasks": [], "planning_crm": {}})
     calls = []
     def fetch(**kwargs):
         calls.append(kwargs)

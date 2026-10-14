@@ -30,6 +30,19 @@ def merge_payload(previous, incoming):
                 count += 1
         merged[kind] = list(rows.values())
         changed[kind] = count
+    if 'planning_crm' in previous or 'planning_crm' in incoming:
+        before, after = previous.get('planning_crm', {}), incoming.get('planning_crm', {})
+        merged['planning_crm'] = {**before, **after}
+        for key in ('cases', 'programs', 'events'):
+            merged['planning_crm'][key] = {**before.get(key, {}), **after.get(key, {})}
+        # Absence from an incremental batch is NOT proof of removal from View.
+        if after.get('scope_complete'):
+            merged['planning_crm']['current_case_ids'] = list(after.get('cases', {}))
+            merged['planning_crm']['scope_checked'] = True
+        elif 'current_case_ids' in before:
+            merged['planning_crm']['current_case_ids'] = list(set(before['current_case_ids']) | set(after.get('cases', {})))
+            merged['planning_crm']['scope_checked'] = False
+    merged['case_evidence'] = {**previous.get('case_evidence', {}), **incoming.get('case_evidence', {})}
     return merged, changed
 
 
@@ -105,9 +118,16 @@ class PlanningApiMixin:
             previous = db.get_latest_crm_snapshot(source)
             cursor = (previous or {}).get("metadata", {}).get("cursor")
             since = datetime.fromisoformat(cursor) - timedelta(seconds=1) if cursor else None
+            context = (previous or {}).get('payload', {}).get('planning_crm')
+            # One initial context backfill for old snapshots, not a periodic full re-fetch.
+            if context is None:
+                since = None
             dataset, metadata = self._planning_client(settings, credentials).fetch_view_dataset(
-                since=since, activity_since=since, include_related_activities=False, progress_callback=progress)
+                since=since, activity_since=since, include_related_activities=False, progress_callback=progress,
+                planning_previous=context or {})
             incoming = dataset_to_payload(dataset)
+            if 'planning_context' in metadata:
+                incoming['planning_crm'] = metadata.pop('planning_context')
             payload, changed = merge_payload((previous or {}).get("payload", {}), incoming)
             metadata.update(cursor=started.isoformat(), view_id=settings["view_id"],
                             view_kind=settings["view_kind"], changed=changed)

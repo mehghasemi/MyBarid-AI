@@ -4,6 +4,7 @@ from database import db
 
 
 DEFAULT_CONNECTION = {"base_url": "https://crm.baridsoft.ir", "organization": "Main", "api_version": "v9.1"}
+AVAILABLE_MODULES = {"crm-quality", "case-planning"}
 
 
 def main_settings():
@@ -17,7 +18,8 @@ def main_settings():
 
 class MainSettingsMixin:
     def get_main_settings(self):
-        return {"ok": True, **main_settings(), "storage_path": str(db.app_data_dir()),
+        settings = main_settings()
+        return {"ok": True, **settings, "default_module": settings.get("default_module", "crm-quality"), "storage_path": str(db.app_data_dir()),
                 "connection_scope": "shared", "credentials": "Windows جاری یا ورود موقت؛ رمز ذخیره نمی‌شود"}
 
     def save_main_settings(self, payload):
@@ -26,6 +28,9 @@ class MainSettingsMixin:
         crm = payload.get("crm") if isinstance(payload, dict) else None
         if not isinstance(crm, dict):
             return {"ok": False, "error": "ساختار تنظیمات CRM معتبر نیست."}
+        default_module = payload.get("default_module", main_settings().get("default_module", "crm-quality"))
+        if default_module not in AVAILABLE_MODULES:
+            return {"ok": False, "error": "ماژول پیش‌فرض باید یکی از ماژول‌های فعال باشد."}
         checked = {key: str(crm.get(key) or "").strip() for key in DEFAULT_CONNECTION}
         parsed = urlparse(checked["base_url"])
         if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password:
@@ -36,6 +41,7 @@ class MainSettingsMixin:
         checked["organization"] = checked["organization"].strip("/")
         stored = main_settings()
         stored["crm"] = checked
+        stored["default_module"] = default_module
         db.set_setting("main_settings", stored)
         return {"ok": True, "message": "اتصال اصلی ذخیره شد؛ Viewهای ماژول‌ها تغییر نکردند."}
 
@@ -47,3 +53,8 @@ class MainSettingsMixin:
             return {"ok": False, "error": "تنظیم فعال‌بودن AI معتبر نیست."}
         db.set_setting("evaluation_ai_enabled", payload["ai_enabled"])
         return {"ok": True}
+
+    def get_module_cached_data(self, module, page=0, search=""):
+        """Read only the persisted local snapshot. Never connect to CRM."""
+        from cached_data import cached_module_data
+        return cached_module_data(self, module, page, search)

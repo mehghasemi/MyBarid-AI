@@ -72,9 +72,10 @@ def _dataset_id(snapshot: dict | None) -> str | None:
 
 from planning import PlanningApiMixin
 from app_settings import MainSettingsMixin, main_settings
+from planning_workflow import PlanningWorkflowMixin
 
 
-class Api(PlanningApiMixin, MainSettingsMixin):
+class Api(PlanningApiMixin, MainSettingsMixin, PlanningWorkflowMixin):
     def get_management_evaluation(self) -> dict:
         if not self.result or "quantitative" not in self.result:
             return {"ok": False, "error": "برای این Snapshot هنوز ارزیابی با نسخه جدید معیارها اجرا نشده است."}

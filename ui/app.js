@@ -191,6 +191,7 @@ async function showPage(name) {
   const topbarTitle = document.getElementById('topbar-page-title');
   if (topbarTitle) topbarTitle.textContent = pageTitles[name] || name;
   const loaders = {
+    upload: () => loadCachedInventory('crm-quality'),
     'planning-settings': loadPlanningSettings,
     'main-settings': loadMainSettings,
     'evaluation-settings': loadEvaluationSettings,
@@ -584,10 +585,11 @@ async function persistSelectedCrmView() {
   if (status) status.textContent = `View پیش‌فرض ذخیره شد: ${result.view_name || select.value}`;
 }
 
-async function loadCrmSettings() {
+async function loadCrmSettings(askForUpdate = true) {
   ensureCrmViewSelector();
   const s = await api().get_crm_settings();
   if (!s) return;
+  await loadCachedInventory('crm-quality');
   document.getElementById('crm-base-url').value = s.base_url || '';
   document.getElementById('crm-organization').value = s.organization || '';
   const savedView = s.view_name || '';
@@ -631,7 +633,7 @@ async function loadCrmSettings() {
           : '<div class="ok-box">آخرین نتیجه تحلیل محلی بازیابی شد؛ برای به‌روزرسانی، تحلیل را دوباره اجرا کنید.</div>';
     }
     const fetchedAt = s.last_snapshot?.metadata?.fetched_at || s.last_snapshot?.fetched_at;
-    if (s.data_source === 'crm' && fetchedAt && !window._crmStartupUpdateAsked) {
+    if (askForUpdate && s.data_source === 'crm' && fetchedAt && !window._crmStartupUpdateAsked) {
       window._crmStartupUpdateAsked = true;
       const shouldUpdate = await showConfirmDialog(
         `داده‌های محلی CRM آماده هستند.\nآخرین به‌روزرسانی: ${toShamsiStr(fetchedAt)}\n\nآیا می‌خواهید فقط تغییرات جدید و اصلاح‌شده از CRM دریافت شود؟`
@@ -802,6 +804,7 @@ async function syncCrmView() {
         '<div class="crm-progress-meta">' + res.total_notes + ' Note و ' + res.total_cases + ' مورد | ' + changeMessage + '</div>' +
         '<div class="crm-progress-meta">بدون تغییر: ' + unchanged + ' | ' + escapeHtml(res.warning || '') + '</div>';
       await initializeCaseSelection();
+      await loadCachedInventory('crm-quality');
       const analysis = await api().get_analysis_info();
       state.analysisDone = !!analysis?.loaded && !analysis?.stale;
       if (analysis?.loaded && analysis?.stale) {
@@ -2137,11 +2140,14 @@ function initApp() {
   loadCriteria();
   loadAiSettings();
   loadExpertGroupsSettings();
-  loadCrmSettings().catch(error => {
+  loadCrmSettings(false).catch(error => {
     const statusBox = document.getElementById('crm-status');
     if (statusBox) statusBox.textContent = `خطا در بازیابی داده محلی CRM: ${error.message || error}`;
   });
   // هیچ منبع داده‌ای هنگام شروع خودکار خوانده نمی‌شود؛ کاربر باید منبع را صریحاً انتخاب کند.
+  api().get_main_settings().then(settings => {
+    activateModule(['crm-quality', 'case-planning'].includes(settings.default_module) ? settings.default_module : 'crm-quality');
+  }).catch(error => toast('ماژول پیش‌فرض بازیابی نشد: ' + (error.message || error), 'error'));
   api().get_version().then(v => {
     document.getElementById('app-version').textContent = 'نگارش: ' + v;
   }).catch(() => {});

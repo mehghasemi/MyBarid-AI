@@ -17,6 +17,7 @@ function planningPayload() {
 async function loadPlanningSettings() {
   try {
     const saved = await api().get_planning_settings();
+    await loadCachedInventory('case-planning');
     document.getElementById('planning-url').value = saved.base_url;
     document.getElementById('planning-org').value = saved.organization;
     document.getElementById('planning-api').value = saved.api_version;

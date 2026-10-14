@@ -125,6 +125,28 @@ def init_db() -> None:
                 saved_at TEXT NOT NULL,
                 payload BLOB NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS planning_local_records (
+                scope TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                program_id TEXT NOT NULL,
+                data TEXT NOT NULL,
+                revision INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY(scope, kind, record_id)
+            );
+            CREATE TABLE IF NOT EXISTS planning_local_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scope TEXT NOT NULL,
+                program_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                changed_at TEXT NOT NULL,
+                actor TEXT,
+                before_data TEXT,
+                after_data TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_planning_audit_program
+                ON planning_local_audit(scope, program_id, id);
             """
         )
         conn.commit()
