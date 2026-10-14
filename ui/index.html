@@ -26,6 +26,7 @@
         <span class="module-chevron">⌄</span>
       </button>
       <div id="module-picker-menu" class="module-picker-menu" role="listbox" aria-label="فهرست ماژول‌ها">
+        <button type="button" class="module-option" data-module="case-planning" onclick="activateModule('case-planning')"><span class="module-icon">🗓️</span><span class="module-copy"><strong>برنامه‌ریزی موارد</strong><small>دریافت مستقل از CRM</small></span></button>
         <button type="button" class="module-option active" data-module="crm-quality" onclick="activateModule('crm-quality')">
           <span class="module-icon">⚖️</span>
           <span class="module-copy"><strong>ارزیابی موارد</strong><small>تحلیل Notes و Tasks</small></span>
@@ -64,6 +65,7 @@
       <div class="nav-section-title">مدیریت پروژه‌ها</div>
       <div class="module-empty-state">قابلیت‌های مدیریت پروژه‌ها در دست توسعه است.</div>
     </div>
+    <div class="module-menu" data-module-menu="case-planning"><div class="nav-section-title">برنامه‌ریزی موارد</div><div class="nav-item" data-page="planning-settings">⚙️ تنظیمات و دریافت از CRM</div></div>
 
     <div class="spacer"></div>
     <div class="status-pill" id="dataset-status">داده CRM هنوز دریافت نشده است.</div>
@@ -711,7 +713,26 @@
 
 <div class="toast-container" id="toast-container"></div>
 
+<template id="planning-page-template">
+<section class="page" id="page-planning-settings">
+  <h1 class="page-title">تنظیمات برنامه‌ریزی موارد</h1>
+  <p class="page-sub">View و داده‌های این ماژول مستقل از ارزیابی هستند. دریافت اول اولیه و دریافت‌های بعدی فقط جدید و تغییرکرده‌اند.</p>
+  <div class="card"><div class="row">
+    <div class="field"><label for="planning-url">آدرس CRM</label><input id="planning-url" dir="ltr"></div>
+    <div class="field"><label for="planning-org">سازمان</label><input id="planning-org" dir="ltr"></div>
+    <div class="field"><label for="planning-api">نسخه API</label><input id="planning-api" dir="ltr"></div>
+  </div><details><summary>ورود اختیاری CRM؛ در غیر این صورت هویت Windows جاری</summary><div class="row"><div class="field"><label for="planning-username">نام کاربری</label><input id="planning-username" dir="ltr" autocomplete="username"></div><div class="field"><label for="planning-password">رمز عبور</label><input id="planning-password" type="password" autocomplete="current-password"></div></div><p>رمز این فرم در تنظیمات ذخیره نمی‌شود.</p></details>
+    <button class="btn" id="planning-list" onclick="loadPlanningViews()">دریافت فهرست Viewها</button>
+    <div class="field"><label for="planning-view">View پیش‌فرض</label><select id="planning-view"><option value="">ابتدا فهرست را دریافت کنید</option></select></div>
+    <button class="btn primary" onclick="savePlanningSettings()">ذخیره View پیش‌فرض</button><p id="planning-saved" aria-live="polite"></p>
+  </div>
+  <div class="card"><p id="planning-last-update"></p><p>انتخاب در فهرست بدون زدن «ذخیره» روی دریافت اثر ندارد. خروج از برنامه View ذخیره‌شده را تغییر نمی‌دهد.</p><button class="btn primary" id="planning-sync" onclick="syncPlanningView()">دریافت و به‌روزرسانی داده‌ها</button><p id="planning-progress" aria-live="polite"></p><p>حذف رکوردها یا خروج آن‌ها از شرط View با دریافت افزایشی تشخیص داده نمی‌شود؛ این مرحله فقط افزودن و به‌روزرسانی است.</p></div>
+</section>
+</template>
+
 <script src="./management.js"></script>
+<script src="./planning.js"></script>
+<script src="./settings.js"></script>
 <script src="./app.js"></script>
 </body>
 </html>

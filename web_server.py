@@ -38,6 +38,11 @@ ROLE_PERMISSIONS = {
     },
 }
 
+ROLE_PERMISSIONS["analyst"].update({"get_planning_settings", "get_planning_sync_status", "sync_planning_view"})
+ROLE_PERMISSIONS["viewer"].update({"get_planning_settings", "get_planning_sync_status"})
+for role in ("analyst", "viewer"):
+    ROLE_PERMISSIONS[role].update({"get_main_settings", "get_evaluation_module_settings"})
+
 
 def _hash_password(password: str, salt: bytes | None = None) -> str:
     salt = salt or secrets.token_bytes(16)

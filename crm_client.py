@@ -196,11 +196,17 @@ def _paged_values(url: str, username: str = "", password: str = "") -> list[dict
     rows = list(payload.get("value") or [])
     next_link = payload.get("@odata.nextLink") or payload.get("odata.nextLink")
     page_count = 1
+    seen = {url}
     while next_link and page_count < 1000:
+        if next_link in seen:
+            raise CRMClientError("صفحه‌بندی CRM تکراری است؛ دریافت ناقص ذخیره نمی‌شود.")
+        seen.add(next_link)
         page_payload = _powershell_get_json(next_link, username, password)
         rows.extend(page_payload.get("value") or [])
         next_link = page_payload.get("@odata.nextLink") or page_payload.get("odata.nextLink")
         page_count += 1
+    if next_link:
+        raise CRMClientError("حد ایمنی صفحه‌بندی CRM پر شد؛ دریافت ناقص ذخیره نمی‌شود.")
     return rows
 
 
@@ -432,6 +438,8 @@ class DynamicsCRMClient:
         view_name: str = DEFAULT_VIEW_NAME,
         username: str = "",
         password: str = "",
+        view_id: str = "",
+        view_kind: str = "",
     ):
         self.base_url = base_url.rstrip("/")
         self.organization = organization.strip("/")
@@ -439,12 +447,28 @@ class DynamicsCRMClient:
         self.view_name = view_name
         self.username = username
         self.password = password
+        self.view_id = view_id
+        self.view_kind = view_kind
 
     @property
     def api_root(self) -> str:
         return f"{self.base_url}/{self.organization}/api/data/{self.api_version}"
 
     def _get_user_view(self) -> dict:
+        if self.view_id:
+            from uuid import UUID
+            if self.view_kind not in {"userqueries", "savedqueries"}:
+                raise CRMClientError("نوع View ذخیره‌شده معتبر نیست.")
+            try:
+                identifier = str(UUID(self.view_id))
+            except ValueError as exc:
+                raise CRMClientError("شناسه View ذخیره‌شده معتبر نیست.") from exc
+            view = _powershell_get_json(
+                f"{self.api_root}/{self.view_kind}({identifier})?$select=name,returnedtypecode,fetchxml",
+                self.username, self.password)
+            if str(view.get("returnedtypecode") or "").casefold() not in {"annotation", "incident"}:
+                raise CRMClientError("View ذخیره‌شده از نوع مورد یا یادداشت نیست.")
+            return {**view, "view_id": identifier}
         view = None
         view_id_key = None
         requested_normalized = _normalize_view_name(self.view_name)
@@ -583,13 +607,19 @@ class DynamicsCRMClient:
         # records. Follow the server-provided continuation link.
         next_link = payload.get("@odata.nextLink") or payload.get("odata.nextLink")
         page_count = 1
+        seen_links = {url}
         while next_link and page_count < 1000:
+            if next_link in seen_links:
+                raise CRMClientError("صفحه‌بندی View تکراری است؛ دریافت ناقص ذخیره نمی‌شود.")
+            seen_links.add(next_link)
             progress("در حال دریافت صفحات بعدی View...", page_count, 0, f"صفحه {page_count}")
             page_payload = _powershell_get_json(next_link, self.username, self.password)
             rows.extend(page_payload.get("value") or [])
             next_link = page_payload.get("@odata.nextLink") or page_payload.get("odata.nextLink")
             page_count += 1
         progress("دریافت View انجام شد", page_count, page_count, f"{len(rows):,} رکورد")
+        if next_link:
+            raise CRMClientError("حد ایمنی دریافت View پر شد؛ دریافت ناقص ذخیره نمی‌شود.")
 
         # A Case View can contain thousands of cases. Fetch related activities
         # in two batched requests instead of two requests per case.
@@ -742,7 +772,7 @@ class DynamicsCRMClient:
             parsed = parse_datetime(_value(row, "modifiedon"))
             if parsed is not None:
                 case_dates.append(parsed)
-        note_dates = [n.note_date for n in notes if n.note_date]
+        note_dates = [n.modified_on for n in notes if n.modified_on]
         task_dates = []
         for row in expanded_tasks:
             parsed = parse_datetime(_value(row, "modifiedon", "createdon"))

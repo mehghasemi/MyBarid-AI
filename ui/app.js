@@ -122,6 +122,8 @@ function activateModule(moduleName) {
     trigger.querySelector('.module-copy small').textContent = subtitle;
   }
   closeModulePicker();
+  if (moduleName === 'case-planning') showPage('planning-settings');
+  if (moduleName === 'crm-quality') showPage('upload');
   if (moduleName === 'project-management') {
     toast('ماژول مدیریت پروژه‌ها در دست توسعه است.');
   }
@@ -174,6 +176,9 @@ async function showPage(name) {
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === name));
   document.querySelectorAll('.page').forEach(el => el.classList.toggle('active', el.id === 'page-' + name));
   const pageTitles = {
+    'main-settings': 'تنظیمات اصلی برنامه',
+    'evaluation-settings': 'تنظیمات ماژول ارزیابی',
+    'planning-settings': 'تنظیمات برنامه‌ریزی موارد',
     upload: 'ورود و دریافت از CRM', periods: 'آماده‌سازی و اجرای تحلیل',
     dashboard: 'داشبورد', general: 'تحلیل کلی', management: 'ارزیابی و صف بررسی مدیریتی',
     ranking: 'عملکرد کارشناسان', cases: 'جزئیات موارد / Taskها',
@@ -186,6 +191,9 @@ async function showPage(name) {
   const topbarTitle = document.getElementById('topbar-page-title');
   if (topbarTitle) topbarTitle.textContent = pageTitles[name] || name;
   const loaders = {
+    'planning-settings': loadPlanningSettings,
+    'main-settings': loadMainSettings,
+    'evaluation-settings': loadEvaluationSettings,
     dashboard: loadDashboard, general: loadGeneral, management: loadManagementEvaluation,
     ranking: loadRanking, cases: () => loadCasesTable(0), suspicious: loadSuspicious,
     'data-quality': loadDataQuality, 'mgmt-report': loadMgmtReport,

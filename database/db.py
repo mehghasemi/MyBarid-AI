@@ -206,12 +206,12 @@ def save_crm_snapshot(source: str, view_name: str, fetched_at: str,
         conn.close()
 
 
-def get_latest_crm_snapshot() -> dict | None:
+def get_latest_crm_snapshot(source: str = "dynamics365") -> dict | None:
     conn = get_connection()
     try:
         row = conn.execute(
             "SELECT source, view_name, fetched_at, metadata, payload "
-            "FROM crm_snapshots ORDER BY fetched_at DESC, id DESC LIMIT 1"
+            "FROM crm_snapshots WHERE source=? ORDER BY fetched_at DESC, id DESC LIMIT 1", (source,)
         ).fetchone()
         if not row:
             return None

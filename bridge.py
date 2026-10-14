@@ -70,7 +70,11 @@ def _dataset_id(snapshot: dict | None) -> str | None:
 
 
 
-class Api:
+from planning import PlanningApiMixin
+from app_settings import MainSettingsMixin, main_settings
+
+
+class Api(PlanningApiMixin, MainSettingsMixin):
     def get_management_evaluation(self) -> dict:
         if not self.result or "quantitative" not in self.result:
             return {"ok": False, "error": "برای این Snapshot هنوز ارزیابی با نسخه جدید معیارها اجرا نشده است."}
@@ -243,9 +247,7 @@ class Api:
     def get_crm_settings(self) -> dict:
         stored = db.get_setting("crm_settings", {}) or {}
         return {
-            "base_url": stored.get("base_url", DEFAULT_BASE_URL),
-            "organization": stored.get("organization", DEFAULT_ORGANIZATION),
-            "api_version": stored.get("api_version", DEFAULT_API_VERSION),
+            **main_settings()["crm"],
             "view_name": stored.get("view_name") or "",
             "data_source": "crm",
             "last_snapshot": db.get_latest_crm_snapshot(),
@@ -280,11 +282,10 @@ class Api:
 
 
     def save_crm_settings(self, payload: dict) -> dict:
+        stored = db.get_setting("crm_settings", {}) or {}
         settings = {
-            "base_url": str(payload.get("base_url") or DEFAULT_BASE_URL).rstrip("/"),
-            "organization": str(payload.get("organization") or DEFAULT_ORGANIZATION).strip("/"),
-            "api_version": str(payload.get("api_version") or DEFAULT_API_VERSION).strip("/"),
-            "view_name": str(payload.get("view_name") or "").strip(),
+            **main_settings()["crm"],
+            "view_name": str(payload.get("view_name", stored.get("view_name", "")) or "").strip(),
         }
         db.set_setting("crm_settings", settings)
         return {"ok": True, **settings}
@@ -447,7 +448,9 @@ class Api:
         previous = db.get_latest_crm_snapshot()
         previous_meta = (previous or {}).get("metadata") or {}
         previous_payload = (previous or {}).get("payload") or {}
-        same_view = bool(previous and previous.get("view_name") == settings["view_name"])
+        expected_root = client.api_root
+        same_view = bool(previous and previous.get("view_name") == settings["view_name"]
+                         and previous_meta.get("api_root", expected_root) == expected_root)
         sync_count = int(previous_meta.get("sync_count") or 0)
         force_full = bool(payload.get("full_sync"))
         previous_watermarks = previous_meta.get("watermarks") or {}
@@ -1043,6 +1046,7 @@ class Api:
             dataset = self.dataset
             config = copy.deepcopy(self.config)
             ai_settings = copy.deepcopy(self.ai_settings)
+            ai_settings.enabled = ai_settings.enabled and db.get_setting("evaluation_ai_enabled", True)
             self.result = None
             self.status = {"running": True, "done": False, "cancelled": False, "stage": "شروع", "current": 0, "total": 0,
                            "error": None, "generation": generation, "mode": mode,
@@ -1305,6 +1309,8 @@ class Api:
         case = self.dataset.cases.get(case_key)
         if not case:
             return {"ok": False, "error": "کیس پیدا نشد."}
+        if not db.get_setting("evaluation_ai_enabled", True):
+            return {"ok": False, "error": "AI برای ماژول ارزیابی غیرفعال است؛ تنظیمات ماژول را بررسی کنید."}
         if not self.ai_settings.enabled or not self.ai_settings.api_key:
             return {"ok": False, "error": "تحلیل AI فعال نیست یا کلید API وارد نشده است."}
         ai_criteria = [c for _, c in self.config.active_criteria()
